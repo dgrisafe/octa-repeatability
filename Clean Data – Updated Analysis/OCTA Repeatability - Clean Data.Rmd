@@ -39,92 +39,36 @@ For now, only the overall image scoring will be analyzed.
 
 I manually removed underscores from the names of each patient because it was causing uneven splitting of variables. This modified dataset is saved as all_quantification_10_24_19_DG.xlsx. I updated the names for every tab of the file.
 
-```{r, message = FALSE}
-setwd("/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data/Jae")
-
-data_octa_all <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "names_data")
-data_octa_hemifield <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "Hemifield")
-data_octa_quadrant <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "Quadrants")
-data_octa_sector <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "Sector")
-data_octa_clockhour <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "Clockhours")
-data_octa_annulus <- read_xlsx("all_quantification_10_24_19_DG.xlsx", sheet = "Annulus")
-
-# data_octa_all %>% glimpse
-```
-
-##Data Dictionary
-
 ```{r}
-data_dict <- data.frame(stringsAsFactors = F,
-  
-  variable = c("ptid", "eye_imaged", "time_stamp",
-    "name_last", "name_first", "female", "image_area", "image_method", "image_size",
-    "v_diameter", "v_area_density", "v_skeleton_density", "v_perimeter_index", "v_complexity_index", "flow_impair_zone", "flux", "msrid"
-    ),
-  
-  label = c("Patient Identification", "Eye Imaged", "Exam Date and Time",
-    "Last Name", "First Name", "Female Sex", "Image Area", "Image Method", "Image Size",
-    "Vessel Diameter (units?)", "Vessel Area Density (units?)", "Vessel Skeleton Density (units?)", "Vessel Perimeter Index (units?)", "Vessel Complexity Index (units?)", "Flow Impairment Zone (units?)", "Flux (units?)", "Measurement ID"
-    )
-  
-  )
+# function that formats variables appropriately
+form_vars <- function(df){
 
-# print html table
-data_dict %>% 
-  kable() %>% 
-  kable_styling(bootstrap_options = c("striped", "hover"))
-
-# function that pulls label for given variable
-get_label <- function(var){data_dict$label[data_dict$variable==var]}
-# get_label("ptid")
-```
-
-##Data Wrangling
-
-###Rename Variables
-
-This section will rename the variables to match the dictionary
-
-```{r}
-data_octa_all_rename <- data_octa_all %>% 
- 
-  # organize information into separate variables
-  separate(col = "...1", sep = "_", remove = TRUE,
-           into = c(
-             "name_last",
-             "name_first",
-             "ptid",
-             "sex",
-             "image_area",
-             "image_method",
-             "image_size",
-             "exam_date",
-             "exam_time",
-             "eye_imaged"
-             )) %>% 
-
-  # rename variables in existing format
-  rename(
-    v_diameter = "Vessel Diameter",
-    v_area_density = "Vessel Area Density",
-    v_skeleton_density = "Vessel Skeleton Density",
-    v_perimeter_index = "Vessel Perimeter Index",
-    v_complexity_index = "Vessel Complexity Index",
-    flow_impair_zone = "Flow Impiarment Zone",
-    flux = "Flux"
-  ) 
-
-# data_octa_all_rename %>% glimpse
-```
-
-###Format Variables
-
-This section will format variables appropriately.
-
-```{r}
-data_octa_all_format <- data_octa_all_rename %>% 
-  mutate(
+  df %>% 
     
+    select(NameSIDSexEyeRegion, everything()) %>% 
+    
+    mutate(
+      
+      # match first text (upper or lower case) of any length, followed by any underscore, all repeated any number of times
+      name = str_extract(string = NameSIDSexEyeRegion, pattern = regex("^[[A-Za-z]*_]+")) %>% str_sub(end = -2),
+      
+      # matches everything starting with the first number
+      SIDSexEyeRegion = str_extract(string = NameSIDSexEyeRegion, pattern = regex("[[0-9]*].*$"))
+      
+      ) %>% 
+    
+    # separate the remaining variables
+    separate(
+      col = SIDSexEyeRegion, sep = "_", remove = TRUE,
+      into = c("ptid", "sex", "image_area", "image_method", "image_size", "exam_date", "exam_time", "eye_imaged")
+      ) %>% 
+    
+    # filter blank rows
+    filter(!is.na(exam_date)) %>% 
+    
+    # format variables appropriately
+    mutate(
+      
     time_stamp = paste(exam_date, exam_time) %>% as.POSIXct(format = "%m%d%Y %H%M%S"),
 
     exam_date = exam_date %>% as.Date(format = "%m%d%Y"),
@@ -132,7 +76,7 @@ data_octa_all_format <- data_octa_all_rename %>%
     eye_imaged = case_when(
       eye_imaged == "OS" ~ 1,
       eye_imaged == "OD" ~ 2
-    ) %>% factor(levels = c(1, 2), labels = c("OS", "OD")),
+    ) %>% factor(levels = c(1, 2), labels = c("Left", "Right")),
     
     female = case_when(
       sex == "F" ~ 1,
@@ -145,59 +89,175 @@ data_octa_all_format <- data_octa_all_rename %>%
     
     image_size = factor(image_size)
     
-  ) %>% 
-  
-  # remove unnecessary variables
-  select(-sex, -exam_time) %>% 
-  
-  # arrange so in appropriate order
-  arrange(ptid, eye_imaged, time_stamp) %>% 
-  
-  mutate(
+    ) %>% 
+    
+    # remove unnecessary variables
+    select(-NameSIDSexEyeRegion, -sex, -exam_time) %>% 
+    
+    # arrange so in appropriate order
+    arrange(ptid, eye_imaged, time_stamp) %>% 
+    
     # create a measurement ID
-    msrid = 1:nrow(.)
-  ) %>% 
+    mutate(eyeid = group_indices(., ptid, eye_imaged)) %>% 
+ 
+    # deidentify names
+    select(-name) %>%
+    
+    # reorder variables appropriately
+    select(ptid, female, eyeid, eye_imaged, image_area, image_size, image_method, exam_date, time_stamp, everything())
   
-  # deidentify names
-  select(-name_last, -name_first) %>% 
-  
-  # reorder variables appropriately
-  select(msrid, ptid, eye_imaged, time_stamp, exam_date, everything())
-  
-  
-
-# data_octa_all_format %>% glimpse
+}
 ```
+
+
+```{r, message = FALSE, warning = FALSE}
+# create a function that removes the middle initial and titles from the names
+
+setwd("/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data/Jae")
+
+data_octa_global <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Global") %>% form_vars()
+data_octa_annulus <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Annulus") %>% form_vars()
+data_octa_hemifield <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Hemifield") %>% form_vars()
+data_octa_quadrant <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Quadrants") %>% form_vars()
+data_octa_sector <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Sector") %>% form_vars()
+data_octa_clockhour <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Clockhours") %>% form_vars()
+
+data_octa_commercial <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Commercial measurement") %>% form_vars()
+
+# data_octa_commercial %>% glimpse
+```
+
+
+##Data Dictionary
+
+```{r}
+
+var_labels <- c(
+  ptid = "Patient Identification",
+  eyeid = "Eye Identification",
+  eye_imaged = "Eye Imaged",
+  time_stamp = "Exam Date and Time",
+  name_last = "Last Name",
+  name_first = "First Name",
+  female = "Female Sex",
+  image_area = "Image Area",
+  image_method = "Image Method",
+  image_size = "Image Size",
+  v_diameter = "Vessel Diameter (units?)",
+  v_area_density = "Vessel Area Density (units?)",
+  v_skeleton_density = "Vessel Skeleton Density (units?)",
+  v_perimeter_index = "Vessel Perimeter Index (units?)",
+  v_complexity_index = "Vessel Complexity Index (units?)",
+  flow_impair_zone = "Flow Impairment Zone (units?)",
+  flux = "Flux (units?)"
+)
+
+# assign variable labels
+data_dict <-  data.frame(var_labels) %>% 
+  rownames_to_column("Variable")
+
+# print html table
+data_dict %>% 
+  kable(col.names = c("Variable", "Label")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+##Data Wrangling
+
+###Rename Variables
+
+This section will rename the variables to match the dictionary
+
+```{r}
+
+# function to rename OCTA variables
+rename_octa_vars <- function(df){
+  
+  df %>% 
+    
+    # rename variables in existing format
+    rename(
+      v_diameter = starts_with("Vessel Diameter"),
+      v_area_density = starts_with("Vessel Area Density"),
+      v_skeleton_density = starts_with("Vessel Skeleton Density"),
+      v_perimeter_index = starts_with("Vessel Perimeter Index"),
+      v_complexity_index = starts_with("Vessel Complexity Index"),
+      flow_impair_zone = starts_with("Flow Impiarment Zone"),
+      flux = starts_with("Flux")
+    ) 
+ 
+}
+
+data_octa_global_rename <- rename_octa_vars(data_octa_global)
+data_octa_annulus_rename <- rename_octa_vars(data_octa_annulus)
+# data_octa_hemifield_rename <- rename_octa_vars(data_octa_hemifield)
+# data_octa_quadrant_rename <- rename_octa_vars(data_octa_quadrant)
+# data_octa_sector_rename <- rename_octa_vars(data_octa_sector)
+# data_octa_clockhour_rename <- rename_octa_vars(data_octa_clockhour)
+
+# check out the renamed datasets
+# data_octa_global_rename %>% glimpse
+# data_octa_annulus_rename %>% glimpse
+
+# commercial data had different variable names than the remaining variables
+data_octa_commercial_rename <- data_octa_commercial %>% 
+  # remove redundant commercial variables
+  select(-`Eye Imaged`, -EyeRegion, -SID, -Sex, -`Time stamp`, -`Date Studied`) %>% 
+  # rename the OCTA variables
+  rename(
+    
+  ) 
+
+# data_octa_commercial_rename %>% glimpse
+```
+
 
 ###Label Variables
 
 This section will label variables appropriately.
 
 ```{r}
+# match variable labels with variable names in dataframe
+label(data_octa_global_rename) <- as.list(var_labels[match(names(data_octa_global_rename), names(var_labels))])
+label(data_octa_annulus_rename) <- as.list(var_labels[match(names(data_octa_annulus_rename), names(var_labels))])
+# label(data_octa_hemifield_rename) <- as.list(var_labels[match(names(data_octa_hemifield_rename), names(var_labels))])
+# label(data_octa_quadrant_rename) <- as.list(var_labels[match(names(data_octa_quadrant_rename), names(var_labels))])
+# label(data_octa_sector_rename) <- as.list(var_labels[match(names(data_octa_sector_rename), names(var_labels))])
+# label(data_octa_clockhour_rename) <- as.list(var_labels[match(names(data_octa_clockhour_rename), names(var_labels))])
 
-# function that gets the label from the data dictionary
-get_dict_label <- function(n){data_dict[["label"]][[n]]}
-    
-# assign label to each variable
-label(data_octa_all_format[["ptid"]])               <- get_dict_label(1)
-label(data_octa_all_format[["eye_imaged"]])         <- get_dict_label(2)
-label(data_octa_all_format[["time_stamp"]])         <- get_dict_label(3)
-# label(data_octa_all_format[["name_last"]])          <- get_dict_label(4)
-# label(data_octa_all_format[["name_first"]])         <- get_dict_label(5)
-label(data_octa_all_format[["female"]])             <- get_dict_label(6)
-label(data_octa_all_format[["image_area"]])         <- get_dict_label(7)
-label(data_octa_all_format[["image_method"]])       <- get_dict_label(8)
-label(data_octa_all_format[["image_size"]])         <- get_dict_label(9)
-label(data_octa_all_format[["v_diameter"]])         <- get_dict_label(10)
-label(data_octa_all_format[["v_area_density"]])     <- get_dict_label(11)
-label(data_octa_all_format[["v_skeleton_density"]]) <- get_dict_label(12)
-label(data_octa_all_format[["v_perimeter_index"]])  <- get_dict_label(13)
-label(data_octa_all_format[["v_complexity_index"]]) <- get_dict_label(14)
-label(data_octa_all_format[["flow_impair_zone"]])   <- get_dict_label(15)
-label(data_octa_all_format[["flux"]])               <- get_dict_label(16)
-label(data_octa_all_format[["msrid"]])              <- get_dict_label(17)
+label(data_octa_commercial_rename) <- as.list(var_labels[match(names(data_octa_commercial_rename), names(var_labels))])
+```
 
-# data_octa_all_format %>% glimpse
+#Single Eye Participation
+
+Venugopal (2019) et al. ran the analysis including all eyes.[@venugopalRepeatabilityComparabilityPeripapillary2019] Then they re-ran the analysis after selecting only a single eye randomly from each individual. They conclude minimal difference in the findings, and they report only the analysis that includes all eyes: 
+
+"The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis."[@venugopalRepeatabilityComparabilityPeripapillary2019]
+
+Based on this, analysis was performed on all eyes. If time permits, remove a random eye later.
+
+```{r}
+# function that gets just one eye
+get_1eye <- function(df){
+  
+  # set the seed so working with a consistent dataset when randomly sampling left or right eye
+  set.seed(123456)
+  
+  # select random 1 eye per person
+  select_1eye <- df %>% 
+    # get 1 eyeid
+    group_by(ptid, eyeid) %>% sample_n(1) %>% select(ptid, eyeid) %>% ungroup() %>% 
+    # sample 1 eye per individual
+    group_by(ptid) %>% sample_n(1) %>% ungroup() %>% select(eyeid)
+  
+  # subset just the eyes in the selection above
+  df %>% 
+    left_join(x = select_1eye, by = "eyeid")
+  
+}
+
+# get_1eye(data_octa_global_rename) %>% glimpse
 ```
 
 #Subsetting Cohorts
@@ -209,7 +269,10 @@ Intra-visit data was restricted to all measurements of the same eye that occurre
 ```{r}
   
 # Intra-Visit Data: create a dataset that selects only repeat measurements per day
-data_octa_all_intra <- data_octa_all_format %>% 
+data_octa_global_intra <- data_octa_global_rename %>% 
+  
+  # get 1 eye per person
+  get_1eye() %>% 
   
   # create variable that indicates when there is a repeat measurement on the same day for each eye
   add_count(ptid, eye_imaged, exam_date, name = "n_msr_day") %>%
@@ -225,12 +288,12 @@ data_octa_all_intra <- data_octa_all_format %>%
   # create an indicator variable that shows the order of measurements
   group_by(ptid, eye_imaged) %>% 
   mutate(order_obs = seq(n())) %>% 
-  ungroup() 
+  ungroup()
 ```
 
 ##Inter-Visit Data
 
-Inter-visit data was restricted to the last measurement of the day for each eye. If a patient had their right eye measured:    
+Inter-visit data was restricted to the first measurement of the day for each eye. If a patient had their right eye measured:    
 
 - 3 times on Monday  
 
@@ -240,22 +303,26 @@ Inter-visit data was restricted to the last measurement of the day for each eye.
 
 Then they would have three observations in this dataset:
 
-- The third measurement from Monday,  
+- The first measurement from Monday,  
 
-- The fifth measurement from Wednesday, and  
+- The first measurement from Wednesday, and  
 
-- The second measurement from Friday.
+- The first measurement from Friday.
 
 ```{r}
 # Inter-Visit Data: create a dataset that selects the first measurement per day for each eye; there are no repeat measurements per day
-data_octa_all_inter <- data_octa_all_format %>% 
+data_octa_global_inter <- data_octa_global_rename %>% 
+  
+  # get 1 eye per person
+  get_1eye() %>% 
+
   group_by(ptid, eye_imaged, exam_date) %>% 
-  top_n(n = 1, wt = time_stamp) %>% 
+  top_n(n = -1, wt = time_stamp) %>% 
   ungroup() %>% 
   # create an indicator variable that shows the order of measurements
   group_by(ptid, eye_imaged) %>% 
   mutate(order_obs = seq(n())) %>% 
-  ungroup() 
+  ungroup()
 ```
 
 ##Data Flow Chart
@@ -273,50 +340,26 @@ data.frame(
   
   #number of participants
   n_participants = c(
-    data_octa_all_intra %>% group_by(ptid) %>% summarise(n()) %>% nrow(),
-    data_octa_all_inter %>% group_by(ptid) %>% summarise(n()) %>% nrow()
+    data_octa_global_intra %>% group_by(ptid) %>% summarise(n()) %>% nrow(),
+    data_octa_global_inter %>% group_by(ptid) %>% summarise(n()) %>% nrow()
     ),
   
   #number of eyes
   n_eyes = c(
-    data_octa_all_intra %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow(),
-    data_octa_all_inter %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()
+    data_octa_global_intra %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow(),
+    data_octa_global_inter %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()
     ),
   
   # number of measurements
   n_measurements = c(
-    data_octa_all_intra %>% nrow(),
-    data_octa_all_inter %>% nrow()
+    data_octa_global_intra %>% nrow(),
+    data_octa_global_inter %>% nrow()
     )
   
   ) %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped", "hover"))
 
-```
-
-
-#Single Eye Participation
-
-Venugopal (2019) et al. ran the analysis including all eyes.[@venugopalRepeatabilityComparabilityPeripapillary2019] Then they re-ran the analysis after selecting only a single eye randomly from each individual. They conclude minimal difference in the findings, and they report only the analysis that includes all eyes: 
-
-"The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis."[@venugopalRepeatabilityComparabilityPeripapillary2019]
-
-Based on this, analysis was performed on all eyes. If time permits, remove a random eye later.
-
-```{r}
-
-# # set the seed so working with a consistent dataset when randomly sampling left or right eye
-# set.seed(2019)
-# 
-# # select a single eye (right or left) per individual
-# data_octa_all_format_1eye <- data_octa_all_format %>%
-#   # group by each subject id
-#   group_by(ptid, eye_imaged) %>%
-#   # from each subject id, take a random eye (left or right)
-#   sample_n(1) %>%
-#   # ungroup the data
-#   ungroup() %>% glimpse
 ```
 
 
@@ -334,7 +377,7 @@ print_table1 <- function(df){
     "flow_impair_zone", "flux" 
   )
   # variables not included
-  # "msrid", "ptid", "name_last", "name_first", "time_stamp", "exam_date"
+  # "eyeid", "ptid", "name_last", "name_first", "time_stamp", "exam_date"
   
   # factor variables
   catVars_table1 <- c("female", "eye_imaged", "image_area", "image_method", "image_size")
@@ -370,7 +413,7 @@ print_table1 <- function(df){
 Variables in intra-visit dataset
 
 ```{r}
-print_table1(data_octa_all_intra)
+print_table1(data_octa_global_intra)
 ```
 
 ##Inter-Visit OCTA Summary Statistics
@@ -378,7 +421,7 @@ print_table1(data_octa_all_intra)
 Variables in inter-visit dataset
 
 ```{r}
-print_table1(data_octa_all_inter)
+print_table1(data_octa_global_inter)
 ```
 
 
@@ -394,15 +437,15 @@ scat_octa_sid <- function(octa_var){
 
   # select a random sample of 10 SID's
   set.seed(1998)
-  ptid_sample10 <- data_octa_all_format %>% dplyr::filter(eye_imaged == "OD") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
+  ptid_sample10 <- data_octa_global_rename %>% dplyr::filter(eye_imaged == "Right") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
   
-grid.arrange(ncol = 2, left = get_label(octa_var), top = "OCTA Measures by Patient", bottom = get_label("ptid"),
+grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures by Patient", bottom = var_labels["ptid"],
 
-             data_octa_all_intra %>%
-               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "OD")) %>%
+             data_octa_global_intra %>%
+               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
                ggplot(aes_string(x = "ptid", y = octa_var, group = "ptid")) +
                geom_point(alpha = 0.1, size = 5, color = "red") +
-               ylim(min(data_octa_all_format[[octa_var]]), max(data_octa_all_format[[octa_var]])) +
+               ylim(min(data_octa_global_rename[[octa_var]]), max(data_octa_global_rename[[octa_var]])) +
                ggtitle("Intra") +
                ylab("") +
                xlab("") +
@@ -412,11 +455,11 @@ grid.arrange(ncol = 2, left = get_label(octa_var), top = "OCTA Measures by Patie
                  axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
                  ),
              
-             data_octa_all_inter %>%
-               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "OD")) %>%
+             data_octa_global_inter %>%
+               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
                ggplot(aes_string(x = "ptid", y = octa_var, group = "ptid")) +
                geom_point(alpha = 0.1, size = 5, color = "blue") +
-               ylim(min(data_octa_all_format[[octa_var]]), max(data_octa_all_format[[octa_var]])) +
+               ylim(min(data_octa_global_rename[[octa_var]]), max(data_octa_global_rename[[octa_var]])) +
                ggtitle("Inter") +
                ylab("") +
                xlab("") +
@@ -431,7 +474,7 @@ grid.arrange(ncol = 2, left = get_label(octa_var), top = "OCTA Measures by Patie
 
 # scat_octa_sid("v_area_density")
 
-# data_octa_all_format %>% glimpse
+# data_octa_global_rename %>% glimpse
 ```
 
 ###Vessel Area Density
@@ -479,16 +522,16 @@ spaghet_plot <- function(octa_var){
 
   # select a random sample of 10 patients
   set.seed(2448)
-  ptid_sample10 <- data_octa_all_format %>% dplyr::filter(eye_imaged == "OD") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
+  ptid_sample10 <- data_octa_global_rename %>% dplyr::filter(eye_imaged == "Right") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
 
-grid.arrange(ncol = 2, left = get_label(octa_var), top = "OCTA Measures Over Time", bottom = get_label("time_stamp"),
+grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures Over Time", bottom = var_labels["time_stamp"],
              
-  data_octa_all_intra %>%
-    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "OD")) %>%
+  data_octa_global_intra %>%
+    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
     ggplot(aes_string(x = "time_stamp", y = octa_var, group = "ptid")) +
     geom_line(alpha = 0.5, size = 1, color = "red") +
     theme(legend.position = "none") +
-    ylim(min(data_octa_all_format[[octa_var]]), max(data_octa_all_format[[octa_var]])) +
+    ylim(min(data_octa_global_rename[[octa_var]]), max(data_octa_global_rename[[octa_var]])) +
     ggtitle("Intra") +
     ylab("") +
     xlab("") +
@@ -498,12 +541,12 @@ grid.arrange(ncol = 2, left = get_label(octa_var), top = "OCTA Measures Over Tim
       axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
     ),
   
-  data_octa_all_inter %>%
-    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "OD")) %>%
+  data_octa_global_inter %>%
+    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
     ggplot(aes_string(x = "time_stamp", y = octa_var, group = "ptid")) +
     geom_line(alpha = 0.5, size = 1, color = "blue") +
     theme(legend.position = "none") +
-    ylim(min(data_octa_all_format[[octa_var]]), max(data_octa_all_format[[octa_var]])) +
+    ylim(min(data_octa_global_rename[[octa_var]]), max(data_octa_global_rename[[octa_var]])) +
     ggtitle("Inter") +
     ylab("") +
     xlab("") +
@@ -570,13 +613,13 @@ Intra-Visit Bland-Altman Plots of OCTA Variables
 get_blandaltman <- function(df, octa_var){
 
   # make OCTA variable name
-  octa_name <- octa_var %>% as_label() %>% get_label()
+  octa_name <- var_labels[as.character(octa_var)]
 
   # intra-visit dataset
   data_blandalt <- df %>%
 
     # select only the measurement ID and the OCTA variable of interest
-    select(ptid, eye_imaged, order_obs, msrid, !!octa_var) %>%
+    select(ptid, eye_imaged, order_obs, eyeid, !!octa_var) %>%
         
     # only select the first 2 measurements
     filter(order_obs <= 2) %>% 
@@ -600,7 +643,7 @@ get_blandaltman <- function(df, octa_var){
     geom_text(aes(label = ifelse(
       diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
       diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
-        yes = as.character(msrid), no = ''
+        yes = as.character(eyeid), no = ''
       )), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
     ggtitle("") +
     ylab("Difference in Measurements") +
@@ -615,7 +658,7 @@ get_blandaltman <- function(df, octa_var){
     geom_text(aes(label = ifelse(
       diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
       diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
-        yes = as.character(msrid), no = ''
+        yes = as.character(eyeid), no = ''
       ), y = 6), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
     scale_y_continuous(limits = c(0, 200), breaks = seq(0,200,50)) +
     scale_x_continuous(limits = c(-max(data_blandalt$diff)*1.5, max(data_blandalt$diff)*1.5)) +
@@ -625,43 +668,43 @@ get_blandaltman <- function(df, octa_var){
   grid.arrange(ncol = 2, top = textGrob(octa_name), p_blandalt, p_diffdist)
 }
 
-# get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_area_density))
+# get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_area_density))
 ```
 
 
 ###Vessel Area Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_area_density))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_area_density))
 ```
 
 ###Vessel Diameter
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_diameter))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_diameter))
 ```
 
 ###Vessel Skeleton Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_skeleton_density))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_skeleton_density))
 ```
 
 ###Vessel Perimeter Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_perimeter_index))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_perimeter_index))
 ```
 
 ###Vessel Complexity Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(v_complexity_index))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_complexity_index))
 ```
 
 ###Flow Impairment Zone
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(flow_impair_zone))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(flow_impair_zone))
 ```
 
 ###Flux
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_intra, octa_var = quo(flux))
+get_blandaltman(df = data_octa_global_intra, octa_var = quo(flux))
 ```
 
 ###Outliers
@@ -669,8 +712,8 @@ get_blandaltman(df = data_octa_all_intra, octa_var = quo(flux))
 Assess some of the observations outside of expected limits.
 
 ```{r}
-data_octa_all_intra %>% 
-  filter(msrid %in% c(50, 51, 55, 56, 121, 122, 139, 140, 175, 176, 592, 593)) %>% 
+data_octa_global_intra %>% 
+  filter(eyeid %in% c(50, 51, 55, 56, 121, 122, 139, 140, 175, 176, 592, 593)) %>% 
   kable(digits = 3) %>%
   kable_styling(
     #bootstrap table classes
@@ -685,37 +728,37 @@ Inter-Visit Bland-Altman Plots of OCTA Variables
 
 ###Vessel Area Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(v_area_density))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_area_density))
 ```
 
 ###Vessel Diameter
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(v_diameter))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_diameter))
 ```
 
 ###Vessel Skeleton Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(v_skeleton_density))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_skeleton_density))
 ```
 
 ###Vessel Perimeter Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(v_perimeter_index))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_perimeter_index))
 ```
 
 ###Vessel Complexity Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(v_complexity_index))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_complexity_index))
 ```
 
 ###Flow Impairment Zone
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(flow_impair_zone))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(flow_impair_zone))
 ```
 
 ###Flux
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_all_inter, octa_var = quo(flux))
+get_blandaltman(df = data_octa_global_inter, octa_var = quo(flux))
 ```
 
 
@@ -724,8 +767,8 @@ get_blandaltman(df = data_octa_all_inter, octa_var = quo(flux))
 Assess some of the observations outside of expected limits.
 
 ```{r}
-data_octa_all_inter %>% 
-  filter(msrid %in% c(30, 32, 42, 45, 73, 75, 138, 141, 187, 188, 271, 272, 294, 295, 330, 331, 538, 535)) %>% 
+data_octa_global_inter %>% 
+  filter(eyeid %in% c(30, 32, 42, 45, 73, 75, 138, 141, 187, 188, 271, 272, 294, 295, 330, 331, 538, 535)) %>% 
   kable(digits = 3) %>%
   kable_styling(
     #bootstrap table classes
@@ -784,26 +827,26 @@ Table 2 shows repeatability estimates of vessel density measurements.
 get_repeatability <- function(df, octa_var){
 
   # make OCTA variable name
-  octa_name <- octa_var %>% as_label() %>% get_label()
-
+  octa_name <- var_labels[as.character(octa_var)][[2]]
+octa_name
   # intra-visit dataset
   df %>%
 
     # select only the measurement ID and the OCTA variable of interest
-    select(ptid, eye_imaged, order_obs, !!octa_var) %>%
+    select(ptid, eyeid, eye_imaged, order_obs, !!octa_var) %>%
 
     # only select the first 2 measurements
-    filter(order_obs <= 2) %>% 
-        
+    # filter(order_obs <= 2) %>%
+
     # group by measurement ID
-    group_by(ptid, eye_imaged) %>% 
-    
+    group_by(eyeid) %>%
+
     # calculate the mean and variance of measurements for each individual
     mutate(
-      mean = mean(!!octa_var),
-      var = sd(!!octa_var)^2
-      ) %>% 
-    
+      mean = base::mean(!!octa_var),
+      var = stats::sd(!!octa_var)^2
+      ) %>%
+
     # remove grouping by measurement ID
     ungroup() %>%
 
@@ -817,9 +860,9 @@ get_repeatability <- function(df, octa_var){
     mutate(
       CRw = sqrt(2)*1.96*Sw,
       CVw = 100*Sw/µ,
-      octa_var = as.character(octa_name)
+      var_name = octa_name
       ) %>%
-    select(octa_var, everything())
+    select(var_name, everything())
 
   # octa_name
   # #Sw is the "residual standard error" from the anova output
@@ -831,14 +874,14 @@ get_repeatability <- function(df, octa_var){
 }
 
 # call repeatability statistics on each measurement, then make into a table
-get_repeatability(df = data_octa_all_intra, octa_var = quo(v_diameter)) %>%
+get_repeatability(df = data_octa_global_intra, octa_var = quo(v_diameter)) %>%
   rbind(
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(v_area_density)),
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(v_skeleton_density)),
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(v_perimeter_index)),
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(v_complexity_index)),
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(flow_impair_zone)),
-    get_repeatability(df = data_octa_all_intra, octa_var = quo(flux))
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_area_density)),
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_skeleton_density)),
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_perimeter_index)),
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_complexity_index)),
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(flow_impair_zone)),
+    get_repeatability(df = data_octa_global_intra, octa_var = quo(flux))
   ) %>%
   # make html "kable" and round digits
   kable(digits = 3) %>%
@@ -939,13 +982,13 @@ icc_tabulate <- function(df){
 ##Intra-Visit ICC
 
 ```{r, warning = FALSE}
-icc_tabulate(data_octa_all_intra)
+icc_tabulate(data_octa_global_intra)
 ```
 
 ##Inter-Visit ICC
 
 ```{r, warning = FALSE}
-icc_tabulate(data_octa_all_inter)
+icc_tabulate(data_octa_global_inter)
 ```
 
 ##Calculating ICC Statistic
@@ -962,11 +1005,10 @@ icc_tabulate(data_octa_all_inter)
 <span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICC in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting. I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
 
 ```{r}
-
-model1.fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_all_intra)
+model1.fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_global_intra)
 summary(model1.fit)
 
-# model2.fit <- lmer(v_area_density ~ SS + (1|ptid), data=data_octa_all_intra)
+# model2.fit <- lmer(v_area_density ~ SS + (1|ptid), data=data_octa_global_intra)
 # summary(model2.fit)
 ```
 
