@@ -1237,7 +1237,7 @@ icc_tabulate <- function(df){
 
   # function that calls ICC function, adds a column to front with variable name
   icc_that <- function(df, var){
-      c(var, ICCest(ptid, var, data = df))
+      c(var, ICCest(eyeid, var, data = df))
   }
 
   # call the ICC function on each OCTA variable, then r bind into a table
@@ -1250,40 +1250,6 @@ icc_tabulate <- function(df){
     icc_that(df, "v_complexity_index"),
     icc_that(df, "flow_impair_zone"),
     icc_that(df, "flux"),
-    icc_that(df, "zeiss_flux")
-  ) %>% as.data.frame() %>%
-    # round columns
-    mutate(
-      ICC = as.double(ICC),
-      LowerCI = as.double(LowerCI),
-      UpperCI = as.double(UpperCI),
-      k = as.double(k),
-      varw = as.double(varw),
-      vara = as.double(vara)
-      ) %>%
-
-    # call kable
-    kable(digit = 3) %>%
-    #bootstrap table classes
-    kable_styling(bootstrap_options = c("striped", "hover"))
-
-}
-
-
-
-# function that produces a kable output for commercial datasets
-icc_tabulate_comm <- function(df){
-
-  library(ICC)
-
-  # function that calls ICC function, adds a column to front with variable name
-  icc_that <- function(df, var){
-      c(var, ICCest(ptid, var, data = df))
-  }
-
-  # call the ICC function on each OCTA variable, then r bind into a table
-  rbind(
-    icc_that(df, "zeiss_v_area_density"),
     icc_that(df, "zeiss_flux")
   ) %>% as.data.frame() %>%
     # round columns
