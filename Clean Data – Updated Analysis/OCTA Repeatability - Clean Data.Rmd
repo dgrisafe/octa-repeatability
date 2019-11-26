@@ -1066,29 +1066,26 @@ df_bland96 %>%
   aov(formula = value ~ children)
 ```
 
-##Table 2: Intra-Visit Repeatability
+##Table 2: Repeatability
 
 Table 2 shows repeatability estimates of vessel density measurements.
 
 <span style="color:blue">This table was modeled after Table 2 in Venugopal (2018).[@venugopalRepeatabilityVesselDensity2018]</span> 
 
 ```{r}
-trim3 <- function(x){sprintf("%.3f", round(x, 3))}
-
 # function that gets repeatability statistics
 get_repeatability <- function(df, octa_var){
 
+trim3 <- function(x){sprintf("%.3f", round(x, 3))}
+
   # make OCTA variable name
   octa_name <- var_labels[as.character(octa_var)][[2]]
-octa_name
+  
   # intra-visit dataset
   df %>%
 
     # select only the measurement ID and the OCTA variable of interest
     select(ptid, eyeid, eye_imaged, order_obs, !!octa_var) %>%
-
-    # only select the first 2 measurements
-    # filter(order_obs <= 2) %>%
 
     # group by measurement ID
     group_by(eyeid) %>%
@@ -1104,6 +1101,7 @@ octa_name
 
     # take the average of mean measurements and the average of the variances
     summarise(
+      n = n(),
       µ = mean(mean),
       Sw = sqrt(mean(var)),
       se_var = sd(var)/sqrt(n()),
@@ -1145,25 +1143,46 @@ octa_name
 
 }
 
-# call repeatability statistics on each measurement, then make into a table
-get_repeatability(df = data_octa_global_intra, octa_var = quo(v_diameter)) %>%
-  rbind(
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_area_density)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(zeiss_v_area_density)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_skeleton_density)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_perimeter_index)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(v_complexity_index)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(flow_impair_zone)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(flux)),
-    get_repeatability(df = data_octa_global_intra, octa_var = quo(zeiss_flux))
-  ) %>%
-  # make html "kable" and round digits
-  kable(digits = 3, col.names = c("OCTA Variable", "µ", "Sw", "CRw", "CVw")) %>%
-  kable_styling(
-    #bootstrap table classes
-    bootstrap_options = c( "hover")
-  )
+get_repeat_table <- function(df_table){
+  
+  # call repeatability statistics on each measurement, then make into a table
+  get_repeatability(df = df_table, octa_var = quo(v_diameter)) %>%
+    rbind(
+      get_repeatability(df = df_table, octa_var = quo(v_area_density)),
+      get_repeatability(df = df_table, octa_var = quo(zeiss_v_area_density)),
+      get_repeatability(df = df_table, octa_var = quo(v_skeleton_density)),
+      get_repeatability(df = df_table, octa_var = quo(v_perimeter_index)),
+      get_repeatability(df = df_table, octa_var = quo(v_complexity_index)),
+      get_repeatability(df = df_table, octa_var = quo(flow_impair_zone)),
+      get_repeatability(df = df_table, octa_var = quo(flux)),
+      get_repeatability(df = df_table, octa_var = quo(zeiss_flux))
+    ) %>%
+    # make html "kable" and round digits
+    kable(digits = 3, col.names = c("OCTA Variable", "n", "µ", "Sw", "CRw", "CVw")) %>%
+    kable_styling(
+      #bootstrap table classes
+      bootstrap_options = c( "hover")
+    )
+  
+}
 ```
+
+###Intra-Visit Repeatability{.tabset}
+
+####Normal
+```{r}
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  get_repeat_table()
+```
+
+####Glaucoma
+```{r}
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  get_repeat_table()
+```
+
 
 ##Calculating Repeatability Statistics
 
@@ -1285,17 +1304,38 @@ icc_tabulate_comm <- function(df){
 }
 ```
 
-##Intra-Visit ICC
 
-```{r, warning = FALSE}
-icc_tabulate(data_octa_global_intra)
+##Intra-Visit ICC{.tabset}
+
+###Normal
+```{r, warning=FALSE}
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  icc_tabulate()
+```
+
+###Glaucoma
+```{r, warning=FALSE}
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  icc_tabulate()
 ```
 
 
-##Inter-Visit ICC
+##Inter-Visit ICC{.tabset}
 
-```{r, warning = FALSE}
-icc_tabulate(data_octa_global_inter)
+###Normal
+```{r, warning=FALSE}
+data_octa_global_inter %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  icc_tabulate()
+```
+
+###Glaucoma
+```{r, warning=FALSE}
+data_octa_global_inter %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  icc_tabulate()
 ```
 
 
