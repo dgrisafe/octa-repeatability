@@ -30,15 +30,15 @@ library(lme4)
 library(citr)
 ```
 
-#Data
+#Data{.tabset}
 
-This data was taken from a clean dataset that Jae emailed out on October 25th, 2019.
+This data was taken from a clean dataset that Jae emailed out on November 26th, 2019.
 
 Jae organized the retina by six different methods. He created OCTA variable scores for the overall image, 2 hemifields, 4 quadrants, 6 sectors, 12 clock hours, and an annular ring.  
 
-For now, only the overall image scoring will be analyzed.
+Annular image scoring was also assessed, and ICC's were similar, but slightly lower than global. Results for annular image scoring are not shown. For now, only the overall "global" image scoring will be shown.
 
-I manually removed underscores from the names of each patient because it was causing uneven splitting of variables. This modified dataset is saved as all_quantification_10_24_19_DG.xlsx. I updated the names for every tab of the file.
+Zeiss commercial **vessel area density** and **flux** variables are also shown for the global image scoring.
 
 ```{r}
 # common factor formats
@@ -46,8 +46,10 @@ form_eye    <- function(x){factor(x, levels = c(1, 2), labels = c("Left",   "Rig
 form_ny     <- function(x){factor(x, levels = c(1, 2), labels = c("No",    "Yes"))}
 form_female <- function(x){factor(x, levels = c(1, 2), labels = c("Female", "Male"))}
 form_glc     <- function(x){factor(x, levels = c(1:4), labels = c("None", "Mild", "Moderate", "Severe"))}
+form_glc_bin <- function(x){factor(x, levels = c(1, 2), labels = c("None", "Glaucoma"))}
 form_dr     <- function(x){factor(x, levels = c(1:5), labels = c("None", "Mild Non-Proliferative Diabetic Retinopathy", "Moderate Non-Proliferative Diabetic Retinopathy", "Severe Non-Proliferative Diabetic Retinopathy", "Proliferative Diabetic Retinopathy"))}
 form_surg   <- function(x){factor(x, levels = c(1:4), labels = c("None", "Laser", "Minimally Invasive Glaucoma Surgery", "Filter"))}
+form_ss <- function(x){as.integer(x)}
 ```
 
 ```{r}
@@ -89,8 +91,8 @@ form_sociodem_vars <- function(df){
       glc_dx_od = base1(GLC_OD) %>% form_glc(),
       glc_dx_os = base1(GLC_OS) %>% form_glc(),
 
-      surg_proc_catextract_od = base1(`Osx(CE)_OD`) %>% form_surg(),
-      surg_proc_catextract_os = base1(`Osx(CE)_OS`) %>% form_surg(),
+      surg_proc_catextract_od = base1(`Osx(CE)_OD`) %>% form_ny(),
+      surg_proc_catextract_os = base1(`Osx(CE)_OS`) %>% form_ny(),
       
       surg_proc_glaucoma_od = base1(`Osx(GLC)_OD`) %>% form_surg(),
       surg_proc_glaucoma_os = base1(`Osx(GLC)_OS`) %>% form_surg()
@@ -157,7 +159,9 @@ form_vars <- function(df){
 
     image_method = factor(image_method),
     
-    image_size = factor(image_size)
+    image_size = factor(image_size),
+    
+    signal_strength = form_ss(SS)
     
     ) %>% 
     
@@ -171,7 +175,7 @@ form_vars <- function(df){
     mutate(eyeid = group_indices(., ptid, eye_imaged)) %>% 
  
     # deidentify names
-    select(-name) %>%
+    select(-name, -SS) %>%
     
     # reorder variables appropriately
     select(ptid, female, eyeid, eye_imaged, image_area, image_size, image_method, exam_date, time_stamp, everything())
@@ -188,15 +192,16 @@ setwd("/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repe
 data_sociodem <- read_xlsx("R&R_PoHX.xlsx", sheet = "PoHx") %>% form_sociodem_vars()
 
 # OCTA data from group's algorithm
-data_octa_global <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Global") %>% form_vars()
-data_octa_annulus <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Annulus") %>% form_vars()
-data_octa_hemifield <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Hemifield") %>% form_vars()
-data_octa_quadrant <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Quadrants") %>% form_vars()
-data_octa_sector <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Sector") %>% form_vars()
-data_octa_clockhour <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Clockhours") %>% form_vars()
+data_octa_filename <- "all_quantification_11_26_19.xlsx"
+data_octa_global <- read_xlsx(data_octa_filename, sheet = "Global") %>% form_vars()
+data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars()
+data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars()
+data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars()
+data_octa_sector <- read_xlsx(data_octa_filename, sheet = "Sector") %>% form_vars()
+data_octa_clockhour <- read_xlsx(data_octa_filename, sheet = "Clockhours") %>% form_vars()
 
 # OCTA data from commercial algorithm
-data_octa_commercial <- read_xlsx("all_quantification_11_20_19.xlsx", sheet = "Commercial measurement") %>% form_vars() 
+data_octa_commercial <- read_xlsx(data_octa_filename, sheet = "Commercial measurement") %>% form_vars() 
 ```
 
 ```{r}
@@ -228,18 +233,28 @@ data_sociodem_long <- list(
   get_eye_long(data_sociodem, "surg_proc_catextract")
   ) %>% 
   reduce(full_join, by = c("ptid", "eye_imaged", "age", "female", "htn_dx", "dm_dx", "nro_dx")) %>% 
-  # create indicator variable for glaucoma status
+  
   mutate(
+    
+    # create indicator variable for glaucoma status
     glc_dx_bin = case_when(
       glc_dx %in% c("None") ~ 1,
       glc_dx %in% c("Mild", "Moderate", "Severe") ~ 2
-      ) %>% factor(c(1:2), c("Normal", "Glaucoma"))
+      ) %>% factor(c(1:2), c("Normal", "Glaucoma")),
+    
+    # create indicator variable for diabetic reinopathy status
+    dr_dx_bin = case_when(
+      dr_dx == "None" ~ 1,
+      dr_dx %in% c(
+        "Mild Non-Proliferative Diabetic Retinopathy", 
+        "Moderate Non-Proliferative Diabetic Retinopathy", 
+        "Severe Non-Proliferative Diabetic Retinopathy",
+        "Proliferative Diabetic Retinopathy"
+        ) ~ 2
+    ) %>% form_ny()
     )
 ```
 
-
-
-##Data Dictionary
 
 ```{r}
 
@@ -248,13 +263,14 @@ var_labels <- c(
   
   # sociodemographic variables
   age = "Age",
-  female = "Female Sex",
+  female = "Sex",
   htn_dx = "Hypertension Diagnosis",
   dm_dx = "Diabetes Mellitus Diagnosis",
   nro_dx = "Optic Neuropathy",
   
   # eye clinical variables
-  dr_dx = "Diabetic Retinopathy Diagnosis",
+  dr_dx = "Diabetic Retinopathy Diagnosis, Ordinal",
+  dr_dx_bin = "Diabetic Retinopathy Diagnosis, Binary",
   glc_sus_dx = "Glaucoma Suspect Diagnosis",
   glc_dx = "Glaucoma Diagnosis, Ordinal",
   glc_dx_bin = "Glaucoma Diagnosis, Binary",
@@ -270,6 +286,7 @@ var_labels <- c(
   image_area = "Image Area",
   image_method = "Image Method",
   image_size = "Image Size",
+  signal_strength = "Signal Strength",
   v_diameter = "Vessel Diameter (units?)",
   v_area_density = "Vessel Area Density (units?)",
   v_skeleton_density = "Vessel Skeleton Density (units?)",
@@ -284,15 +301,6 @@ var_labels <- c(
 # assign variable labels
 data_dict <-  data.frame(var_labels) %>% 
   rownames_to_column("Variable")
-
-# print html table
-data_dict %>% 
-  kable(col.names = c("Variable", "Label")) %>% 
-  kable_styling(bootstrap_options = c("striped", "hover")) %>% 
-  pack_rows("Sociodemographic Variables", 2, 3) %>% 
-  pack_rows("Systemic Clinical Variables", 4, 6) %>% 
-  pack_rows("Ophthalmic Clinical Variables", 7, 12) %>% 
-  pack_rows("OCT Angiography Variables", 13, 29) 
 ```
 
 
@@ -305,16 +313,16 @@ This section will rename the variables to match the dictionary
 ```{r}
 
 # commercial data had different variable names than the remaining variables
-data_octa_commercial_rename <- data_octa_commercial %>% 
+data_octa_commercial_rename <- data_octa_commercial %>%
   # remove unncessary variables
   select(
     ptid, female, eyeid, eye_imaged, image_area, image_size, image_method, exam_date, time_stamp,
-    Area_average, Flux_average
+    signal_strength, Area_average, Flux_average
     ) %>% 
   # rename commercial variables
   rename(
-   zeiss_v_area_density = Area_average,
-   zeiss_flux = Flux_average
+    zeiss_v_area_density = Area_average,
+    zeiss_flux = Flux_average
   )
 
 # function to rename OCTA variables for internal scoring
@@ -338,11 +346,12 @@ rename_octa_vars <- function(df){
 data_octa_global_rename <- rename_octa_vars(data_octa_global) %>% 
   # add the commercial global variables to the global dataset
   left_join(
-    by = c("ptid", "eyeid", "time_stamp"), 
-    y = data_octa_commercial_rename %>% select(ptid, eyeid, time_stamp, zeiss_v_area_density, zeiss_flux)
+    by = c("ptid", "eyeid", "time_stamp", "signal_strength"), 
+    y = data_octa_commercial_rename %>% select(ptid, eyeid, time_stamp, signal_strength, zeiss_v_area_density, zeiss_flux)
     ) %>% 
   # add sociodemographic information
   left_join(y = data_sociodem_long, by = c("ptid", "female", "eye_imaged"))
+# data_octa_global_rename %>% glimpse
 
 data_octa_annulus_rename <- rename_octa_vars(data_octa_annulus)
 # data_octa_hemifield_rename <- rename_octa_vars(data_octa_hemifield)
@@ -370,13 +379,26 @@ label(data_octa_annulus_rename) <- as.list(var_labels[match(names(data_octa_annu
 # label(data_octa_clockhour_rename) <- as.list(var_labels[match(names(data_octa_clockhour_rename), names(var_labels))])
 ```
 
+##Data Dictionary
+
+```{r}
+# print html table
+data_dict %>% 
+  kable(col.names = c("Variable", "Label")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover")) %>% 
+  pack_rows("Sociodemographic Variables", 2, 3) %>% 
+  pack_rows("Systemic Clinical Variables", 4, 6) %>% 
+  pack_rows("Ophthalmic Clinical Variables", 7, 12) %>% 
+  pack_rows("OCT Angiography Variables", 13, 30) 
+```
+
 #Single Eye Participation
 
 Venugopal (2019) et al. ran the analysis including all eyes.[@venugopalRepeatabilityComparabilityPeripapillary2019] Then they re-ran the analysis after selecting only a single eye randomly from each individual. They conclude minimal difference in the findings, and they report only the analysis that includes all eyes: 
 
 "The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis."[@venugopalRepeatabilityComparabilityPeripapillary2019]
 
-Based on this, analysis was performed on all eyes. If time permits, remove a random eye later.
+The following results are for the single eye, chosen at random, from each participant. Bruce did explain a way to calculate ICC's for all measurements on both eyes of each participant. This will be coded later.
 
 ```{r}
 # function that gets just one eye
@@ -458,24 +480,59 @@ Then they would have three observations in this dataset:
 
 ```{r}
 # Inter-Visit Data: create a dataset that selects the first measurement per day for each eye; there are no repeat measurements per day
-get_inter <- function(df){
-
+get_inter <- function(df, window_days){
+  
   df %>% 
     
-  group_by(ptid, eye_imaged, exam_date) %>% 
-  top_n(n = -1, wt = time_stamp) %>% 
-  ungroup() %>% 
-  # create an indicator variable that shows the order of measurements
-  group_by(ptid, eye_imaged) %>% 
-  mutate(order_obs = seq(n())) %>% 
-  ungroup()
-
+    # select the first measurement per day for every eye imaged
+    group_by(ptid, eye_imaged, exam_date) %>% 
+    top_n(n = -1, wt = time_stamp) %>% 
+    ungroup() %>% 
+    
+    # create an indicator variable that shows the order of measurements
+    group_by(ptid, eye_imaged) %>% 
+    mutate(order_obs = seq(n())) %>% 
+    ungroup() %>% 
+    
+    # filter only measurements that are within 180 days of each other
+    group_by(ptid, eye_imaged) %>% 
+    # arrange by increasing exam_date, important for taking the difference in next line
+    arrange(exam_date) %>% 
+    mutate(
+      # set the date of the first visit
+      day_one = min(exam_date),
+      # take the difference of the exam_date and the first visit
+      diff_date = difftime(exam_date, day_one, units = "days"),
+      # indicator variable of whether the time since first visit was within n days
+      ind_n_day = ifelse(diff_date <= window_days, yes = 1, no = 0)
+      ) %>% 
+    # remove all observations that were not within the time window
+    filter(ind_n_day == 1) %>%
+    ungroup() %>% 
+    
+    # remove all people with just one baseline exam that made it through the filtering
+    arrange(ptid) %>% 
+    group_by(ptid, eye_imaged) %>% 
+    mutate(n_exams = n()) %>% 
+    filter(n_exams > 1) %>% 
+    ungroup()
+  
 }
 
-# create inter dataset for global data 
+# create inter dataset for global data, infinite day window
 data_octa_global_inter <- data_octa_global_rename %>% 
   get_1eye() %>% 
-  get_inter()
+  get_inter(window_days = Inf)
+
+# create inter dataset for global data, 365 day window
+data_octa_global_inter365 <- data_octa_global_rename %>% 
+  get_1eye() %>% 
+  get_inter(window_days = 365.25)
+
+# create inter dataset for global data, 180 day window
+data_octa_global_inter180 <- data_octa_global_rename %>% 
+  get_1eye() %>% 
+  get_inter(window_days = 180)
 ```
 
 ##Data Flow Chart
@@ -521,38 +578,104 @@ data.frame(
 ```{r}
 # function to get table 1 for individual people, no repeated measurements
 print_table1_people <- function(df){
+ 
+  vars_systemic <- c("age", "female", "htn_dx", "dm_dx", "nro_dx")
+  vars_new <- c("glc_dx_bin", "dr_dx_bin", "surg_proc_catextract", "surg_proc_glaucoma", "signal_strength")
   
-  Vars_table1 <- c(
-    "age", "female", 
-    "htn_dx", "dm_dx", "nro_dx"
-  )
+  # vars in table 1
+  Vars_table1 <- c(vars_systemic, vars_new)
 
-  # factor variables
-  catVars_table1 <- c("female", "htn_dx", "dm_dx", "nro_dx")
-  
+  # dataframe for table 1
   df_table1 <- df %>% 
-    # select the first observation per person
-    group_by(ptid) %>% 
-    top_n(n = 1) %>% 
-    ungroup() %>% 
-    # add in strata variable
-    select(Vars_table1, "glc_dx_bin") %>% 
     # format doubles so not categorical
-    mutate(age = as.double(age))
+    mutate(
+      age = as.double(age),
+      ptid = as.double(ptid),
+      eyeid = as.double(eyeid),
+      glc_dx_bin = as.double(glc_dx_bin),
+      dr_dx_bin = as.double(dr_dx_bin),
+      signal_strength = as.double(signal_strength),
+      surg_proc_catextract = as.double(surg_proc_catextract),
+      surg_proc_glaucoma = as.double(surg_proc_glaucoma)
+      ) %>%
+    # select(ptid, order_obs, age) %>% 
+    pivot_wider(
+      id_cols = c(ptid, vars_systemic),
+      names_prefix = "obs_",
+      names_from = c(eye_imaged, order_obs),
+      values_from = c(glc_dx_bin, dr_dx_bin, signal_strength, surg_proc_glaucoma, surg_proc_catextract)
+    ) %>% 
+    mutate(
+      
+      signal_strength = rowMeans(select(., starts_with("signal_strength")), na.rm = TRUE) %>% as.double(),
+      
+      glc_dx_bin = case_when(
+        glc_dx_bin_obs_Right_1 == 1 | glc_dx_bin_obs_Right_2 == 1 | glc_dx_bin_obs_Right_3 == 1 |
+         glc_dx_bin_obs_Left_1 == 1 |  glc_dx_bin_obs_Left_2 == 1 |  glc_dx_bin_obs_Left_3 == 1 ~ 1,
+        glc_dx_bin_obs_Right_1 == 2 | glc_dx_bin_obs_Right_2 == 2 | glc_dx_bin_obs_Right_3 == 2 |
+         glc_dx_bin_obs_Left_1 == 2 |  glc_dx_bin_obs_Left_2 == 2 |  glc_dx_bin_obs_Left_3 == 2 ~ 2
+      ) %>% form_glc_bin(),
+      
+      dr_dx_bin = case_when(
+        dr_dx_bin_obs_Right_1 == 1 | dr_dx_bin_obs_Right_2 == 1 | dr_dx_bin_obs_Right_3 == 1 |
+         dr_dx_bin_obs_Left_1 == 1 |  dr_dx_bin_obs_Left_2 == 1 |  dr_dx_bin_obs_Left_3 == 1 ~ 1,
+        dr_dx_bin_obs_Right_1 == 2 | dr_dx_bin_obs_Right_2 == 2 | dr_dx_bin_obs_Right_3 == 2 |
+         dr_dx_bin_obs_Left_1 == 2 |  dr_dx_bin_obs_Left_2 == 2 |  dr_dx_bin_obs_Left_3 == 2 ~ 2
+      ) %>% form_ny(),
+      
+      surg_proc_catextract = case_when(
+        surg_proc_catextract_obs_Right_1 == 1 | surg_proc_catextract_obs_Right_2 == 1 | surg_proc_catextract_obs_Right_3 == 1 |
+         surg_proc_catextract_obs_Left_1 == 1 |  surg_proc_catextract_obs_Left_2 == 1 |  surg_proc_catextract_obs_Left_3 == 1 ~ 1,
+        surg_proc_catextract_obs_Right_1 == 2 | surg_proc_catextract_obs_Right_2 == 2 | surg_proc_catextract_obs_Right_3 == 2 |
+         surg_proc_catextract_obs_Left_1 == 2 |  surg_proc_catextract_obs_Left_2 == 2 |  surg_proc_catextract_obs_Left_3 == 2 ~ 2
+      ) %>% form_ny(),
+      
+      # "None", "Laser", "Minimally Invasive Glaucoma Surgery", "Filter"
+      surg_proc_glaucoma = case_when(
+        surg_proc_glaucoma_obs_Right_1 == 4 | surg_proc_glaucoma_obs_Right_2 == 4 | surg_proc_glaucoma_obs_Right_3 == 4 |
+         surg_proc_glaucoma_obs_Left_1 == 4 |  surg_proc_glaucoma_obs_Left_2 == 4 |  surg_proc_glaucoma_obs_Left_3 == 4 ~ 4,
+        surg_proc_glaucoma_obs_Right_1 == 3 | surg_proc_glaucoma_obs_Right_2 == 3 | surg_proc_glaucoma_obs_Right_3 == 3 |
+         surg_proc_glaucoma_obs_Left_1 == 3 |  surg_proc_glaucoma_obs_Left_2 == 3 |  surg_proc_glaucoma_obs_Left_3 == 3 ~ 3,
+        surg_proc_glaucoma_obs_Right_1 == 2 | surg_proc_glaucoma_obs_Right_2 == 2 | surg_proc_glaucoma_obs_Right_3 == 2 |
+         surg_proc_glaucoma_obs_Left_1 == 2 |  surg_proc_glaucoma_obs_Left_2 == 2 |  surg_proc_glaucoma_obs_Left_3 == 2 ~ 2,
+        surg_proc_glaucoma_obs_Right_1 == 1 | surg_proc_glaucoma_obs_Right_2 == 1 | surg_proc_glaucoma_obs_Right_3 == 1 |
+         surg_proc_glaucoma_obs_Left_1 == 1 |  surg_proc_glaucoma_obs_Left_2 == 1 |  surg_proc_glaucoma_obs_Left_3 == 1 ~ 1
+      ) %>% form_surg()
+      
+    ) %>% 
+    select(-ends_with("_1"), -ends_with("_2"), -ends_with("_3"))
+  
+  # add labels from data dictionary
+  label(df_table1) <- as.list(var_labels[match(names(df_table1), names(var_labels))])
+  
+  # format variables for table 1
+  df_table1 <- df_table1 %>% 
+    mutate(
+      age = as.double(age),
+      signal_strength = as.double(signal_strength)
+    )
   
     ## export table 1 to html
-    CreateTableOne(data = df_table1, vars = Vars_table1, factorVars = catVars_table1, strata = "glc_dx_bin") %>% 
+    CreateTableOne(data = df_table1, vars = Vars_table1, strata = "glc_dx_bin") %>%
       print(exact = "stage", quote = FALSE, noSpaces = F, printToggle = F, varLabels = T) %>%
       kableone(digits = 3) %>%
       kable_styling(
         #bootstrap table classes
         bootstrap_options = c("striped", "hover")
-      ) %>% 
+      ) %>%
       pack_rows("Sociodemographic Variables", 2, 3) %>%
-      pack_rows("Systemic Clinical Variables", 4, 6)
+      pack_rows("Systemic Clinical Variables", 4, 6) %>%
+      pack_rows("Ophthalmic Clinical Variables", 7, 8) %>% 
+      pack_rows("Ophthalmic Surgical Variables", 9, 14) %>% 
+      pack_rows("OCT Angiography Signal Strength", 15, 15)
 
 }
+# print_table1_people(data_octa_global_intra)
+# data_octa_global_intra %>% glimpse
+```
 
+
+```{r}
 # function to get table 1 for all, repeated measurements
 print_table1_measure <- function(df){
   
@@ -561,7 +684,7 @@ print_table1_measure <- function(df){
     "age", "female", 
     "htn_dx", "dm_dx", "nro_dx", 
     "dr_dx", "glc_sus_dx", "glc_dx", "surg_proc_glaucoma", "surg_proc_catextract",
-    "eye_imaged", "image_area", "image_method", "image_size", 
+    "eye_imaged", "image_area", "image_method", "image_size", "signal_strength",
     "v_diameter", "v_area_density", "zeiss_v_area_density", "v_skeleton_density", "v_perimeter_index", "v_complexity_index",
     "flow_impair_zone", "flux", "zeiss_flux" 
   )
@@ -599,9 +722,10 @@ print_table1_measure <- function(df){
       pack_rows("Glaucoma Suspect Diagnosis", 13, 17) %>%
       pack_rows("Glaucoma Diagnosis, Ordinal", 18, 22) %>%
       pack_rows("Surgical Procedure for Glaucoma", 23, 27) %>%
-      pack_rows("Surgical Procedure for Cataract Extraction", 28, 32) %>% 
-      pack_rows("Image Specifications", 33, 36) %>% 
-      pack_rows("OCT Angiography Variables", 37, 45)
+      pack_rows("Surgical Procedure for Cataract Extraction", 28, 28) %>% 
+      pack_rows("Image Specifications", 29, 32) %>% 
+      pack_rows("OCT Angiography Signal Strength", 33, 37) %>% 
+      pack_rows("OCT Angiography Variables", 38, 46)
     
 }
 # print_table1(data_octa_global_intra)
@@ -844,8 +968,9 @@ Intra-Visit Bland-Altman Plots of OCTA Variables
 get_blandaltman <- function(df, octa_var){
 
   # make OCTA variable name
-  octa_name <- var_labels[as.character(octa_var)]
-
+  octa_name_df <- df %>% mutate(label = label(!!octa_var))
+  octa_name <- octa_name_df[1, "label"] %>% as.character()
+  
   # intra-visit dataset
   data_blandalt <- df %>%
 
@@ -896,7 +1021,7 @@ get_blandaltman <- function(df, octa_var){
     ggtitle("") +
     xlab("Difference in Measurements")
 
-  grid.arrange(ncol = 2, top = textGrob(octa_name), p_blandalt, p_diffdist)
+  grid.arrange(ncol = 2, top = octa_name, p_blandalt, p_diffdist)
 }
 
 # get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_area_density))
@@ -1079,7 +1204,7 @@ get_repeatability <- function(df, octa_var){
 trim3 <- function(x){sprintf("%.3f", round(x, 3))}
 
   # make OCTA variable name
-  octa_name <- var_labels[as.character(octa_var)][[2]]
+  octa_name <- var_labels[as_label(octa_var)]
   
   # intra-visit dataset
   df %>%
@@ -1127,9 +1252,12 @@ trim3 <- function(x){sprintf("%.3f", round(x, 3))}
     # make the variables pretty\
     
     mutate(
-      Sw_pretty = paste0(trim3(Sw), " (", trim3(sw_95l), ", ", trim3(sw_95u), ")"),
-      CRw_pretty = paste0(trim3(CRw), " (", trim3(CRw_95l), ", ", trim3(CRw_95u), ")"),
-      CVw_pretty = paste0(trim3(CVw), " (", trim3(CVw_95l), ", ", trim3(CVw_95u), ")")
+      Sw_pretty = trim3(Sw),
+      Sw_pretty_cl = paste0("(", trim3(sw_95l), ", ", trim3(sw_95u), ")"),
+      CRw_pretty = trim3(CRw),
+      CRw_pretty_cl = paste0("(", trim3(CRw_95l), ", ", trim3(CRw_95u), ")"),
+      CVw_pretty = trim3(CVw),
+      CVw_pretty_cl = paste0("(", trim3(CVw_95l), ", ", trim3(CVw_95u), ")")
     ) %>% 
     
     # remove ugly variables
@@ -1156,14 +1284,20 @@ get_repeat_table <- function(df_table){
       get_repeatability(df = df_table, octa_var = quo(flow_impair_zone)),
       get_repeatability(df = df_table, octa_var = quo(flux)),
       get_repeatability(df = df_table, octa_var = quo(zeiss_flux))
-    ) %>%
+    ) 
+
+}
+
+get_repeat_kable <- function(df_kable){
+  
+  df_kable %>% 
+    
     # make html "kable" and round digits
-    kable(digits = 3, col.names = c("OCTA Variable", "n", "µ", "Sw", "CRw", "CVw")) %>%
+    kable(digits = 3, col.names = c("OCTA Variable", "n_measure", "µ", "Sw", "Sw 95% CL", "CRw", "CRw 95% CL", "CVw", "CVw 95% CL")) %>%
     kable_styling(
       #bootstrap table classes
       bootstrap_options = c( "hover")
     )
-  
 }
 ```
 
@@ -1173,14 +1307,16 @@ get_repeat_table <- function(df_table){
 ```{r}
 data_octa_global_intra %>%
   filter(glc_dx_bin == "Normal") %>% 
-  get_repeat_table()
+  get_repeat_table() %>% 
+  get_repeat_kable()
 ```
 
 ####Glaucoma
 ```{r}
 data_octa_global_intra %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
-  get_repeat_table()
+  get_repeat_table() %>% 
+  get_repeat_kable()
 ```
 
 
@@ -1225,15 +1361,19 @@ The $CR_w$ can be interpreted as:
 \[ CVw = 100 *\frac{Sw}{\mu} \]
 
 
-#Intraclass Correlation Coefficient
+#Intraclass Correlation Coefficient, Unadjusted
 
-Intraclass Correlation Coefficient (ICC)
+Intraclass Correlation Coefficient (ICC) is scored using the **ICCest()** function from the **ICC** package. This function "estimates the ICC and confidence intervals using the variance components from a one-way ANOVA."
+
+This is a preliminary result, as we want to calculate the ICC after adjusting for participant, eye (left or right), signal strength, and clinical and other variables. This will be done later in the mixed effects regression models.
 
 ```{r}
 # function that produces a kable output for internal datasets
 icc_tabulate <- function(df){
 
   library(ICC)
+  
+  trim3 <- function(x){sprintf("%.3f", round(as.double(x), 3))}
 
   # function that calls ICC function, adds a column to front with variable name
   icc_that <- function(df, var){
@@ -1254,54 +1394,107 @@ icc_tabulate <- function(df){
   ) %>% as.data.frame() %>%
     # round columns
     mutate(
+      V1 = var_labels[as.character(V1)],
       ICC = as.double(ICC),
-      LowerCI = as.double(LowerCI),
-      UpperCI = as.double(UpperCI),
       k = as.double(k),
       varw = as.double(varw),
-      vara = as.double(vara)
-      ) %>%
+      vara = as.double(vara),
+      
+      ICC_pretty = trim3(ICC),
+      ICC_pretty_cl = paste0("(", trim3(LowerCI), ", ", trim3(UpperCI), ")")
+      ) %>% 
+    
+    # remove unweildy variables
+    select(-ICC, -LowerCI, -UpperCI) %>% 
+    # order desirably
+    select(V1, N, ICC_pretty, ICC_pretty_cl, everything())
 
+
+}
+
+icc_tabulate_kable <- function(df_kable){
+  
+  df_kable %>% 
     # call kable
-    kable(digit = 3) %>%
+    kable(digit = 3, col.names = c("OCTA Variable", "n_people", "ICC", "ICC 95% CL", "k", "varw", "vara")) %>%
     #bootstrap table classes
     kable_styling(bootstrap_options = c("striped", "hover"))
-
+  
 }
 ```
 
 
-##Intra-Visit ICC{.tabset}
+##Intra-Visit ICC, Unadjusted{.tabset}
 
 ###Normal
 ```{r, warning=FALSE}
 data_octa_global_intra %>%
   filter(glc_dx_bin == "Normal") %>% 
-  icc_tabulate()
+  icc_tabulate() %>% 
+  icc_tabulate_kable
 ```
 
 ###Glaucoma
 ```{r, warning=FALSE}
 data_octa_global_intra %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
-  icc_tabulate()
+  icc_tabulate() %>% 
+  icc_tabulate_kable
 ```
 
 
-##Inter-Visit ICC{.tabset}
+##Inter-Visit ICC, Unadjusted
 
-###Normal
+###Inter-Visit ICC Normal{.tabset}
+
+####Normal, All
 ```{r, warning=FALSE}
 data_octa_global_inter %>%
   filter(glc_dx_bin == "Normal") %>% 
-  icc_tabulate()
+  icc_tabulate() %>% 
+  icc_tabulate_kable
 ```
 
-###Glaucoma
+####Normal, 365 Days
+```{r, warning=FALSE}
+data_octa_global_inter365 %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  icc_tabulate() %>% 
+  icc_tabulate_kable
+```
+
+####Normal, 180 Days
+```{r, warning=FALSE}
+data_octa_global_inter180 %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  icc_tabulate() %>% 
+  icc_tabulate_kable
+```
+
+###Inter-Visit ICC Glaucoma{.tabset}
+
+####Glaucoma
 ```{r, warning=FALSE}
 data_octa_global_inter %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
-  icc_tabulate()
+  icc_tabulate() %>% 
+  icc_tabulate_kable
+```
+
+####Glaucoma, 365 Days
+```{r, warning=FALSE}
+data_octa_global_inter365 %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  icc_tabulate() %>% 
+  icc_tabulate_kable
+```
+
+####Glaucoma, 180 Days
+```{r, warning=FALSE}
+data_octa_global_inter180 %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  icc_tabulate() %>% 
+  icc_tabulate_kable
 ```
 
 
@@ -1311,19 +1504,107 @@ data_octa_global_inter %>%
 
 <span style="color:blue">"In the output for the random effects model ‘SID’ is the estimated between-group variance, which in the ICCest output is called ‘vara’ (variance among groups). The within-group variance is ‘Residual’ in the random effects model output, while in ICCest it’s called ‘varw.’ You can see that the values for those two variances match perfectly in the two different outputs. The ICC is defined as between/(between+within). That calculation is not part of the random effects model output, but it is part of the ICCest output, along with confidence intervals for the ICC estimate. The ICC are really high for intravisit (around 97%) and a little lower for intervisit (about 94%). If we were to calculate these ICC for glaucoma and controls separately I think they would be significantly lower because of the reduced between-group variability." - BB 9/4/2019</span> 
 
+#ARVO Abstract Tables
+
+##Table 1: Participants
+
+There were:  
+
+-  73 measurements of 29 patients without glaucoma
+
+- 141 measurements of 59 patients with glaucoma
+
+```{r}
+print_table1_people(data_octa_global_intra)
+```
+
+##Table 2: Repeatability Statistics
+
+```{r, warning = FALSE}
+octa_vars_select_vars <- c("v_area_density", "zeiss_v_area_density", "flux", "zeiss_flux", "v_skeleton_density")
+octa_vars_select_labels <- var_labels[octa_vars_select_vars]
+
+normal_repeat <- bind_cols(
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  get_repeat_table(),
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Normal") %>% 
+  icc_tabulate()
+)
+names_old <- colnames(normal_repeat)
+colnames(normal_repeat) <- paste0(names_old, "_normal")
+
+glaucoma_repeat <- bind_cols(
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  get_repeat_table(),
+data_octa_global_intra %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  icc_tabulate()
+)
+names_old <- colnames(glaucoma_repeat)
+colnames(glaucoma_repeat) <- paste0(names_old, "_glc")
+
+bind_cols(
+  normal_repeat,
+  glaucoma_repeat
+) %>% 
+  
+  # select OCTA vars of interest
+  filter(var_name_normal %in% octa_vars_select_labels) %>%
+
+  # remove unimportant variables
+  select(
+    -var_name_glc, -V1_normal, -V1_glc,
+    -starts_with("n_"), -starts_with("N_"),
+    -starts_with("k_"), -starts_with("varw_"), -starts_with("vara_")
+    ) %>% 
+  
+  # reorder variables
+  select(
+  starts_with("var_name_"), starts_with("V1_"), starts_with("n_"), starts_with("N_"),
+  starts_with("µ_"),
+  "ICC_pretty_normal", "ICC_pretty_cl_normal", "ICC_pretty_glc", "ICC_pretty_cl_glc",
+  "Sw_pretty_normal", "Sw_pretty_cl_normal", "Sw_pretty_glc", "Sw_pretty_cl_glc",
+  "CRw_pretty_normal", "CRw_pretty_cl_normal", "CRw_pretty_glc", "CRw_pretty_cl_glc",
+  "CVw_pretty_normal", "CVw_pretty_cl_normal", "CVw_pretty_glc", "CVw_pretty_cl_glc",
+  everything()
+  ) %>% 
+  
+  # make html kable
+  kable(digits = 3) %>% 
+  kable_styling(
+    #bootstrap table classes
+    bootstrap_options = c( "hover")
+  ) %>% 
+  # group column headers
+  add_header_above(c(" " = 1, "None" = 1, "Glaucoma" = 1, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2)) %>% 
+  add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
+```
+
+
 #Mixed Effects Regression Models
 
 
 ##Model Fitting
 
-<span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICC in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting. I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
+<span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICC in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting." - BB 9/4/2019</span>
 
 ```{r}
 model1.fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_global_intra)
 summary(model1.fit)
 
-# model2.fit <- lmer(v_area_density ~ SS + (1|ptid), data=data_octa_global_intra)
+# model2.fit <- lmer(v_area_density ~ (1|ptid/eyeid), data=data_octa_global_intra)
 # summary(model2.fit)
 ```
+
+<span style="color:blue">"I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
+
+```{r}
+model3.fit <- lmer(v_area_density ~ signal_strength + (1|ptid), data=data_octa_global_intra)
+summary(model3.fit)
+```
+
 
 #References
