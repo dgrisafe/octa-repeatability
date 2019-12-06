@@ -1152,9 +1152,9 @@ data_octa_global_inter %>%
   )
 ```
 
-#Intra-Visit Repeatability
+#Repeatability
 
-Intra-Visit Repeatability of OCTA Variables
+Repeatability of OCTA Variables
 
 Calculate the within-subject standard deviation $(S_w)$, the within-subject coefficient of repeatability $(CR_w)$, and the within-subject coefficient of variation $(CV_w)$ for a given measurement variable $x$.  
 
@@ -1319,6 +1319,30 @@ data_octa_global_intra %>%
   get_repeat_kable()
 ```
 
+###Inter-Visit Repeatability{.tabset}
+
+Restrict to repeat measurements within the last 6 months.
+
+####Normal, 180 Days
+
+There are way too few measurements for this table to be reliable.
+
+```{r}
+data_octa_global_inter %>%
+  get_inter(180) %>% 
+  filter(glc_dx_bin == "Normal") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
+
+####Glaucoma, 180 Days
+```{r}
+data_octa_global_inter %>%
+  get_inter(180) %>% 
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
 
 ##Calculating Repeatability Statistics
 
