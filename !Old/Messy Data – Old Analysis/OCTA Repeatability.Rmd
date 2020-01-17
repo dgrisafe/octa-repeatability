@@ -1,0 +1,867 @@
+---
+title: "OCTA Repeatability & Reliability — Messy Data — Old Analysis"
+author: "Bruce Burkemper and Dom Grisafe"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readxl)           # import excel files
+library(tidyverse)
+library(ICC)              # inter class correlation
+library(labelled)         # add variable labels 
+library(kableExtra)       # HTML tables
+library(tableone)         # table 1
+library(cowplot)          # makes clean plots, with no distractions
+theme_set(theme_cowplot())
+library(gridExtra)        # allows grid arangement of dissimilar plots together
+library(grid)             # add labels to top of grid.arrange plots
+library(lme4)
+```
+
+#Load Data
+
+This data was taken from two disparate datasets in Septembter 2019. This is preliminary.
+
+##Jae's Data
+
+Want to only include observations with both intra-visit and inter-visit measurements so can publish a single paper, with a single Table 1. This was not possible with Ryuna's data, but it looks like there is sufficient overlap to achieve this in Jae's data.
+
+```{r load_jaes_data, echo = FALSE, message=FALSE}
+setwd("/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data/Jae/!Old")
+
+jae_inter <- read_xlsx("R_R_ONH 9-4-19.xlsb.xlsx", sheet = "Inter(All)")
+jae_intra <- read_xlsx("R_R_ONH 9-4-19.xlsb.xlsx", sheet = "Intra(All)")
+
+format_jae <- function(df){
+  df %>% 
+    rename(
+      eye_imaged = `Eye Imaged`,
+      time_stamp = `Time stamp`
+      ) %>% 
+    mutate(
+      eye_imaged = factor(eye_imaged, levels = c("OS", "OD")),
+      cohort = "inter"
+      ) %>% 
+    select(SID, eye_imaged) %>% 
+    # eliminate redundant observations per eye
+    distinct
+}
+
+jae_inter_eyes <- jae_inter %>% format_jae()
+jae_intra_eyes <- jae_intra %>% format_jae()
+
+# dataset with both observations
+jae_bothintrainter <- inner_join(jae_inter_eyes, jae_intra_eyes, by = c("SID","eye_imaged")) %>% mutate(cohort = "both")
+
+# eyes in inter dataset only
+jae_inter_eyes_only <- jae_inter_eyes %>% anti_join(jae_bothintrainter) %>% mutate(cohort = "inter only")
+
+# eyes in intra dataset only
+jae_intra_eyes_only <- jae_intra_eyes %>% anti_join(jae_bothintrainter) %>% mutate(cohort = "intra only")
+
+# make complete dataset
+jae_cohorts <- jae_intra_eyes_only %>% rbind(
+  jae_inter_eyes_only,
+  jae_bothintrainter
+) %>% mutate(target = seq(1,nrow(.)))
+
+# make excel file
+# write.csv(x = jae_cohorts, file = "jae_cohorts.csv")
+
+# number of unique eyes per cohort
+jae_cohorts %>% group_by(cohort) %>% summarise(n_eyes = n()) %>% arrange(rev(cohort)) %>% kable() %>% kable_styling(bootstrap_options = c("striped", "hover")) %>% pack_rows(group_label = "Number of eyes with intra-visit, inter-visit, or both measurements", start_row = 1, end_row = 3)
+```
+
+##Ryuna's Data
+
+Use the readxl package to load select sheets from the excel file.
+
+```{r load_ryunas_data, echo = FALSE, message = FALSE}
+# dom's file path
+setwd("/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data")
+# bruce's file path
+# setwd("C:/repeatability")
+vars_relevant <- c("SID", "Date", "Age", "Sex", 
+                   "Meds", "Sx", "HTN", "DM", 
+                   "Eye", "GLC", "Glaucoma", "IOP", "CCT", "CDR", "MD", "PSD",
+                   "SS", "SS_Diff", "VAD", "FLUX", "PF", "FI", 
+                   "Target", "Judge")
+
+data_octa_intra <- read_xlsx("6x6 RR Log 7-2-19.xlsx", sheet = "6x6 INTRA") %>% select(vars_relevant) %>% mutate(cohort = "intra")
+data_octa_inter <- read_xlsx("6x6 RR Log 7-2-19.xlsx", sheet = "6x6 INTER") %>% select(vars_relevant) %>% mutate(cohort = "inter")
+```
+
+#Data Wrangling
+
+Remove the row of missing values. Format the variables as double, character, or factors. Then add variable labels.
+
+Note, warnings have been supressed because coercion to NA occurs several times.
+
+```{r wrangle_data, echo = FALSE, warning = FALSE}
+format_data <- function(df){
+  
+  df <- df %>% 
+    
+    # remove rows with missing id numbers
+    dplyr::filter(!is.na(SID)) %>% 
+  
+    # format variables
+    mutate(
+      
+      cohort = factor(cohort, levels = c("intra", "inter")),
+      
+      SID = as.character(SID),
+      Date = as.Date(Date),
+      Age = as.double(Age),
+      Sex = factor(Sex, levels = c("F", "M"), labels = c("Female", "Male")),
+      
+      Meds = as.character(Meds),
+      Sx = as.character(Sx),
+      HTN = factor(HTN, levels = c(0, 1), labels = c("None", "Hypertension")),
+      DM = factor(DM, levels = c(0, 1), labels = c("None", "Diabetes")),
+      
+      Eye = factor(Eye, levels = c("OS", "OD"), labels = c("Left Eye", "Right Eye")),
+      Glaucoma = factor(Glaucoma, levels = c(0, 1, 2, 3), labels = c("None", "Mild", "Moderate", "Severe")),
+      IOP = as.double(IOP),
+      CCT = as.double(CCT),
+      CDR = as.double(CDR),
+      MD = as.double(MD),
+      PSD = as.double(PSD),
+      
+      SS = factor(SS, levels = c(10, 9, 8, 7)),
+      SS_Diff = as.double(SS_Diff),
+      VAD = as.double(VAD),
+      FLUX = as.double(FLUX),
+      PF = as.double(PF),
+      FI = as.double(FI)
+      
+    )
+    
+    # add variable labels
+    var_label(df) <- list(
+      
+      SID = "Subject ID",
+      Target = "Eye ID",
+      Judge = "Measurement ID, per eye",
+      Date = "Measurement date",
+      
+      Meds = "Medications",
+      Sx = "Symptoms",
+      HTN = "Hypertension",
+      DM = "Diabetes mellitus",
+      
+      Eye = "Eye laterality",
+      GLC = "Glaucoma notes",
+      Glaucoma = "Glaucoma diagnosis",
+      IOP = "Intraocular Pressure (mmHg)",
+      CCT = "Central corneal thickness (µm)",
+      CDR = "Cup to disc ratio",
+      MD = "Mean deviation (dB) of visual field loss",
+      PSD = "Pattern standard deviation (dB)",
+      
+      SS = "Signal strength",
+      SS_Diff = "Difference in signal strength between measurements",
+      VAD = "Vessel area density (units?)",
+      FLUX = "Mean flow intensity in vessel area (units?)",
+      PF = "Perfusion (units?)",
+      FI = "Flow index (units?)"
+      
+        )
+    
+    return(df)
+}
+
+data_octa_intra <- format_data(data_octa_intra)
+data_octa_inter <- format_data(data_octa_inter)
+
+
+# make dataset of participants with both intra and inter visit measurements
+data_octa_both <- inner_join(by = "SID", x = data_octa_intra, y = data_octa_inter) 
+
+# selects observations in each dataset that are in both
+select_both <- function(string){
+  
+  data_octa_both %>% select(SID, ends_with(string)) %>% 
+    # remove ".x" prefix from variable names
+    set_names(~stringr::str_replace_all(., paste0("\\",string,"$"), ""))
+
+}
+# subset intra variables
+data_octa_both_intra <- select_both(".x")
+
+# subset inter variables
+data_octa_both_inter <- select_both(".y")
+
+# bind the intra and inter datasets into a single, long dataset
+data_octa_both_long <- rbind(select_both(".x"), select_both(".y"))
+```
+
+##Single Eye Participation
+
+Venugopal (2019) et al. runs the analysis including all eyes. Then they re-ran the analysis after selecting only a single eye randomly from each individual. They conclude minimal difference in the findings, and they report only the analysis that includes all eyes: 
+
+"The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis." (Venugopal 2019)
+
+This chunk creates a new dataset that randomly selects a single eye from each individual.
+
+```{r random_eye, echo = FALSE, warning = FALSE}
+
+# set the seed so working with a consistent dataset when randomly sampling left or right eye
+set.seed(2019)
+
+# vector of all duplicate variables per measurement
+vars_pereye <- c("Date", "Age", "Sex",
+                 "Meds", "Sx", "HTN", "DM",
+                 "GLC", "Glaucoma", "IOP", "CCT", "CDR", "MD", "PSD",
+                 "Eye", "SS", "SS_Diff", "VAD", "FLUX", "PF", "FI")
+
+# define the multispread function in the global environment
+#   [Multi-spread function](https://kieranhealy.org/blog/archives/2018/11/06/spreading-multiple-values/) by Dan Sullivan
+multi_spread <- function(df, key, value) {
+  
+    # quote key
+    keyq <- rlang::enquo(key)
+    # break value vector into quotes
+    valueq <- rlang::enquo(value)
+    s <- rlang::quos(!!valueq)
+    df %>% gather(variable, value, !!!s) %>%
+        unite(temp, !!keyq, variable) %>%
+        spread(temp, value)
+    
+}
+
+# function that selects a single eye per individual
+select_1eye <- function(df) {
+  
+  # # example of what the single variable spread looks like
+  # data_octa_intra %>%
+  #   select(Target, Judge, VAD) %>%
+  #   spread(key = Judge, value = VAD)
+  
+  # use multispread to create wide dataset that has first and second measurement per eye of each individual
+  data_octa_wide <- df %>%
+    multi_spread(key = "Judge", value = vars_pereye)
+                                            
+  # select a single eye (right or left) per individual
+  data_octa_wide_1eye <- data_octa_wide %>% 
+    # group by each subject id
+    group_by(SID) %>% 
+    # from each subject id, take a random eye (left or right)
+    sample_n(1) %>% 
+    # ungroup the data
+    ungroup() %>%
+    # order by subject id to show that there's a single eye measurement per individual
+    arrange(SID)
+  
+  # return dataset to long form, where each row is a measurement (not an eye)
+  data_octa_intra_1eye <- data_octa_wide_1eye %>% 
+    # get only the first measurements for each individual eye, add indicator variable
+    select(SID, cohort, Target, starts_with("1_")) %>% mutate(Judge = 1) %>% 
+    # remove "1_" prefix from variable names
+    set_names(~stringr::str_replace_all(., "1_", "")) %>% 
+    # row bind to the second measurements for each individual eye
+    rbind(
+      # wide dataset with first and second measurements
+      data_octa_wide_1eye %>%
+        # get only the second measurements for each individual eye, add indicator variable
+        select(SID, cohort, Target, starts_with("2_")) %>% mutate(Judge = 2) %>% 
+        # remove "2_" prefix from variable names
+        set_names(~stringr::str_replace_all(., "2_", ""))
+    ) %>% 
+    # order by subject ID and then measurement number
+    arrange(SID, Target) %>% 
+    # convert date back to appropriate format
+    mutate(Date = as.Date.POSIXct(as.double(Date)))
+
+}
+
+# create intra dataset with single eye (randomly chosen) per subject
+data_octa_intra_1eye <- select_1eye(df = data_octa_intra) %>% format_data()
+
+# create inter dataset with single eye (randomly chosen) per subject
+data_octa_inter_1eye <- select_1eye(df = data_octa_inter) %>% format_data()
+```
+
+
+#Table 1: Summary Statistics
+
+Variables stratified by glaucoma status (none, mild, moderate, severe). The Venugopal papers dichotomize glaucoma, but it's interesting too look at the higher resolution for now.
+
+##Intra-Visit OCTA Summary Statistics
+
+Variables in intra-visit dataset, stratified by glaucoma
+
+```{r table_one_intra, echo = FALSE}
+
+print_table1 <- function(df){
+  
+  # variables to be included
+  Vars_table1 <- c("Age", "Sex", "Eye",
+                   "HTN", "DM",
+                   "IOP", "CCT", "CDR", 
+                   "MD", "PSD",
+                   "SS", "SS_Diff", "VAD", "FLUX", "PF", "FI")
+  
+  # factor variables
+  catVars_table1 <- c("Eye")
+  
+  # exclude the following from table1: -SID, -Target, -Judge, -Date, -Meds, -Sx, -GLC
+  df_table1 <- df %>% select(Glaucoma, Vars_table1)
+  
+    ## export table 1 to html
+    CreateTableOne(data = df_table1, vars = Vars_table1, factorVars = catVars_table1, strata = "Glaucoma") %>% 
+      print(exact = "stage", quote = FALSE, noSpaces = F, printToggle = F, varLabels = T) %>%
+      kableone(digits = 3) %>%
+      kable_styling(
+        #bootstrap table classes
+        bootstrap_options = c("striped", "hover")
+      ) %>% 
+      pack_rows("Sociodemographics", 2, 4) %>% 
+      pack_rows("Systemic Clinical Measures", 5, 6) %>% 
+      pack_rows("Ophthalmic Clinical Measures", 7, 11) %>% 
+      pack_rows("OCTA Measures", 12, 21)
+    
+}
+
+print_table1(data_octa_intra)
+```
+
+##Inter-Visit OCTA Summary Statistics
+
+Variables in inter-visit dataset, stratified by glaucoma
+
+```{r table_one_inter, echo = FALSE}
+print_table1(data_octa_inter)
+```
+
+#Signal Strength
+
+<span style="color:blue">After speaking with GR on 8/28/2019, it seems like signal strength will have to be included in the linear mixed-effect regression models.</span>
+
+```{r ss_hist, echo = FALSE, message = FALSE}
+grid.arrange(ncol=2, bottom = "Signal Strength",
+  # intra
+  data_octa_intra %>% 
+    ggplot(aes(x = SS)) +
+    stat_count(aes(y = (..count..)/sum(..count..))) +
+    scale_y_continuous(limits = c(0,.75), breaks = seq(0,0.75,0.25), labels = scales::percent_format(accuracy = 1)) +
+    ggtitle("intra") +
+    ylab("Percent") +
+    xlab("") +
+    theme(plot.title = element_text(hjust = 0.5)),
+  # inter
+  data_octa_inter %>% 
+    ggplot(aes(x = SS)) +
+    stat_count(aes(y = (..count..)/sum(..count..))) +
+    scale_y_continuous(limits = c(0,.75), breaks = seq(0,0.75,0.25), labels = scales::percent_format(accuracy = 1)) +
+    ggtitle("inter") +
+    ylab("") +
+    xlab("") +
+    theme(plot.title = element_text(hjust = 0.5))
+)
+```
+
+
+#OCTA Variables by Signal Strength
+
+##Intra-Visit OCTA Variables by Signal Strength
+
+Intravisit mean OCTA variables by signal strength (7-10)
+
+```{r ss_sum_intra, echo = FALSE, warning = FALSE}
+
+table_summary_SS <- function(dataset){
+  
+  # get summary statistics per variable
+  summary_SS <- function(var){
+    
+    df <- dataset %>% select_("SS", variable = "var")
+    
+    df <- df %>%
+      group_by(SS) %>%
+      summarize(
+          n_SS = n(),
+          mean_var = mean(variable, na.rm = T)
+      )
+  
+    mean_var_ss10 <- df$mean_var[df$SS == 10]
+  
+    df %>%
+      # take percent difference
+      mutate(percent_diff = scales::percent((mean_var - mean_var_ss10)/mean_var_ss10, accuracy = 0.1)) %>% 
+  
+      # rename variable
+      dplyr::rename_(
+        .dots = setNames(c("mean_var", "percent_diff"), c(paste0(var, "_mean"), paste0(var, "_pdiff_SS10")))
+        )
+      
+  }
+  
+  # apply the function to all the OCTA variables of interest
+  # lapply(X = c("VAD","FLUX", "PF", "FI"), FUN = summary_SS)
+  summary_SS("VAD") %>% select(-SS, -n_SS) %>% 
+    cbind(summary_SS("FLUX") %>% select(-SS, -n_SS)) %>% 
+    cbind(summary_SS("PF") %>% select(-SS, -n_SS)) %>% 
+    cbind(summary_SS("FI")) %>% select(SS, n_SS, everything()) %>% 
+    # reorder so SS in descending
+    arrange(-SS) %>% 
+    # rename column headers
+    rename(n = n_SS, Mean = VAD_mean, "% Diff" = VAD_pdiff_SS10, Mean = FLUX_mean, "% Diff" = FLUX_pdiff_SS10, Mean = PF_mean, "% Diff" = PF_pdiff_SS10, Mean = FI_mean, "% Diff" = FI_pdiff_SS10) %>% 
+    # make html "kable" and round digits
+    kable(digits = 3) %>%
+    kable_styling(
+      #bootstrap table classes
+      bootstrap_options = c( "hover")
+    ) %>% 
+    # add grouped headers
+    add_header_above(c("Signal Strength" = 2, "VAD" = 2, "FLUX" = 2, "PF" = 2, "FI" = 2))
+  
+}
+
+table_summary_SS(data_octa_intra)
+```
+
+##Inter-Visit OCTA Variables by Signal Strength
+
+Intervisit mean OCTA variables by signal strength (7-10)
+
+```{r ss_sum_inter, echo = FALSE, warning = FALSE}
+table_summary_SS(data_octa_inter)
+```
+
+#Exploratory Data Analysis
+
+##Scatter Plots of OCTA Variables by Subject ID{.tabset}
+
+Scatter plots of OCTA variables for about 10 individuals randomly sampled. These are separated by intra- and inter-visit datasets, and are useful for understanding the data better.
+
+```{r scatter_intrainter, echo = FALSE}
+
+scat_octa_sid <- function(octa_var){
+
+  # select a random sample of 10 SID's
+  set.seed(1998)
+  SID_sample10 <- data_octa_both_long %>% dplyr::filter(Eye == "Right Eye") %>% select(SID) %>% sample_n(11) %>% unlist() %>% as.character()
+
+  data_octa_both_long %>%
+    dplyr::filter((SID %in% SID_sample10) & (Eye == "Right Eye")) %>%
+    ggplot(aes_string(x = "SID", y = octa_var, group = "SID", color = "cohort")) +
+    geom_point(alpha = 0.1, size = 5) +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
+        ) +
+    facet_wrap(vars(cohort))
+}
+
+# data_octa_both_long %>% glimpse
+```
+
+###VAD
+```{r scatter_intrainter_vad, echo=F}
+scat_octa_sid("VAD")
+```
+
+###FLUX
+```{r scatter_intrainter_flux, echo=F}
+scat_octa_sid("FLUX")
+```
+
+###PF
+```{r scatter_intrainter_pf, echo=F}
+scat_octa_sid("PF")
+```
+
+###FI
+```{r scatter_intrainter_fi, echo=F}
+scat_octa_sid("FI")
+```
+
+
+##Spaghetti Plots of OCTA Variables{.tabset}
+
+Spaghetti plots of OCTA variables for about 10 individuals randomly sampled. Mean is superimposed on top in dotted, red line.
+
+```{r spaghet_intra, echo = FALSE}
+
+spaghet_plot <- function(octa_var){
+
+  # select a random sample of 10 SID's
+  set.seed(1998)
+  SID_sample10 <- data_octa_both_long %>% dplyr::filter(Eye == "Right Eye") %>% select(SID) %>% sample_n(14) %>% unlist() %>% as.character()
+
+  data_octa_both_long %>%
+    dplyr::filter((SID %in% SID_sample10) & (Eye == "Right Eye")) %>%
+    ggplot(aes_string(x = "Judge", y = octa_var, group = "SID", color = "cohort")) +
+    geom_line(alpha = 0.5) +
+    # add mean
+    stat_summary(aes(group = 1), geom = "line", linetype = 12, fun.y = mean, size = 2, color = "red") +
+    scale_x_discrete(limits = c(1, 2), expand = c(0.025, 0.025)) +
+    theme(legend.position = "none") +
+    facet_wrap(vars(cohort))
+}
+
+# # function to make spaghetti plots
+# spaghet_plot <- function(df, var){
+#   
+#   set.seed(2000)
+#   
+#     SID_sample10 <- df %>% dplyr::filter(Eye == "Left Eye") %>% select(SID) %>% sample_n(10) %>% unlist() %>% as.character()
+# 
+#   df %>% 
+#     dplyr::filter((SID %in% SID_sample10) & (Eye == "Left Eye")) %>%
+#     mutate(Judge = as.factor(Judge)) %>% 
+#     ggplot(aes(x = Judge, y = !!var, group = Target)) +
+#     geom_line(alpha = 0.5) +
+#     # add mean
+#     stat_summary(aes(group = 1), geom = "line", linetype = 12, fun.y = mean, size = 2, color = "red") +
+#       scale_x_discrete(limits = c(1, 2), expand = c(0.025,0.025))
+#   } + theme(axis.title.x = element_blank())
+#   
+# 
+# # grid arrange all intra-visit spaghetti plots together
+# grid.arrange(ncol = 2, top = "Intra-Visit Repeatability of OCTA Measures", bottom = "Judge",
+#   spaghet_plot(df = data_octa_intra, var = quo(VAD)),
+#   spaghet_plot(df = data_octa_intra, var = quo(FLUX)),
+#   spaghet_plot(df = data_octa_intra, var = quo(PF)),
+#   spaghet_plot(df = data_octa_intra, var = quo(FI))
+# )
+```
+
+###VAD
+```{r spaghet_intrainter_vad, echo=F}
+spaghet_plot("VAD")
+```
+
+###FLUX
+```{r spaghet_intrainter_flux, echo=F}
+spaghet_plot("FLUX")
+```
+
+###PF
+```{r spaghet_intrainter_pf, echo=F}
+spaghet_plot("PF")
+```
+
+###FI
+```{r spaghet_intrainter_fi, echo=F}
+spaghet_plot("FI")
+```
+
+
+#Bland-Altman Plots of OCTA Variables
+
+Coding of Bland-Altman plots is explained in this [blog post](https://www.r-bloggers.com/bland-altmantukey-mean-difference-plots-using-ggplot2/).
+
+##Intra-Visit Bland-Altman Plots of OCTA Variables{.tabset}
+
+```{r blandalt_intra, echo = FALSE}
+
+  # function that gets repeatability statistics
+get_blandaltman <- function(df, octa_var){
+  
+  # make OCTA variable name
+  octa_name <- df %>% select(!!octa_var) %>% var_label()
+  
+  # intra-visit dataset
+  data_blandalt <- df %>% 
+    # select only the eye ID, the judge ID, and the OCTA variable of interest
+    select(Target, Judge, !!octa_var) %>% 
+    # group by measurement ID
+    group_by(Target) %>% 
+    # calculate the difference and mean of measurements for each individual
+    mutate(
+      diff = diff(!!octa_var),
+      mean = mean(!!octa_var)
+      ) %>% ungroup() %>% 
+    select(!!octa_var, everything())
+  
+  p_blandalt <- data_blandalt %>% 
+    ggplot(aes(x = mean, y = diff)) +
+    scale_y_continuous(limits = c(-0.1, 0.1)) +
+    geom_point(size = 0.6, alpha = 0.9) +
+    geom_hline(yintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
+    geom_hline(yintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+    geom_hline(yintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+    ggtitle("") +
+    ylab("Difference in Measurements") +
+    xlab("Average Measurements")
+  
+  p_diffdist <- data_blandalt %>% 
+    ggplot(aes(x = diff)) +
+    geom_vline(xintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
+    geom_vline(xintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+    geom_vline(xintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+    geom_histogram(bins = 30, alpha = 0.9) +
+    scale_y_continuous(limits = c(0, 200), breaks = seq(0,200,50)) +
+    scale_x_continuous(limits = c(-0.1, 0.1)) +
+    ggtitle("") +
+    xlab("Difference in Measurements")
+
+  grid.arrange(ncol = 2, top = textGrob(octa_name), p_blandalt, p_diffdist)
+}
+
+# # grid the 4 OCTA measurements together for intra-visit reliability
+# grid.arrange(ncol = 2, left = "Difference in Measurements", bottom = "Average Measurements",
+#   get_blandaltman(df = data_octa_intra, octa_var = quo(VAD)),
+#   get_blandaltman(df = data_octa_intra, octa_var = quo(FLUX)),
+#   get_blandaltman(df = data_octa_intra, octa_var = quo(PF)),
+#   get_blandaltman(df = data_octa_intra, octa_var = quo(FI))
+# )
+```
+
+###VAD
+```{r blandalt_intra_vad, echo = F}
+get_blandaltman(df = data_octa_intra, octa_var = quo(VAD))
+```
+
+###FLUX
+```{r blandalt_intra_flux, echo = F}
+get_blandaltman(df = data_octa_intra, octa_var = quo(FLUX))
+```
+
+###PF
+```{r blandalt_intra_pf, echo = F}
+get_blandaltman(df = data_octa_intra, octa_var = quo(PF))
+```
+
+###FI
+```{r blandalt_intra_fi, echo = F}
+get_blandaltman(df = data_octa_intra, octa_var = quo(FI))
+```
+
+
+##Inter-Visit Bland-Altman Plots of OCTA Variables{.tabset}
+
+###VAD
+```{r blandalt_inter_vad, echo = F}
+get_blandaltman(df = data_octa_inter, octa_var = quo(VAD))
+```
+
+###FLUX
+```{r blandalt_inter_flux, echo = F}
+get_blandaltman(df = data_octa_inter, octa_var = quo(FLUX))
+```
+
+###PF
+```{r blandalt_inter_pf, echo = F}
+get_blandaltman(df = data_octa_inter, octa_var = quo(PF))
+```
+
+###FI
+```{r blandalt_inter_fi, echo = F}
+get_blandaltman(df = data_octa_inter, octa_var = quo(FI))
+```
+
+
+#Intra-Visit Repeatability of OCTA Variables
+
+Calculate the within-subject standard deviation $(S_w)$, the within-subject coefficient of repeatability $(CR_w)$, and the within-subject coefficient of variation $(CV_w)$ for a given measurement variable $x$.  
+
+```{r eg_bland96, include = FALSE}
+
+# I tried to calculate the Sw manually and by using the one-way anova table, as instructed in Bland (1996). However, the two methods are producing different answers for Sw. Therefore, try to use the data in the paper to recalculate Sw for the sample data provided.
+
+# after rechecking, it turns out my calculations were correct, but it's just the rounding errors combined with squaring and square-rooting to go from standard deviation to variance that caused the differences.
+
+# data copied from Bland (1996)
+df_bland96 <- matrix(c(190, 220, 200, 200, 202.50, 12.58, 220, 200, 240, 230, 222.50, 17.08, 260, 260, 240, 280, 260.00, 16.33, 210, 300, 280, 265, 263.75, 38.60, 270, 265, 280, 270, 271.25, 6.29, 280, 280, 270, 275, 276.25, 4.79, 260, 280, 280, 300, 280.00, 16.33, 275, 275, 275, 305, 282.50, 15.00, 280, 290, 300, 290, 290.00, 8.16, 320, 290, 300, 290, 300.00, 14.14, 300, 300, 310, 300, 302.50, 5.00, 270, 250, 330, 370, 305.00, 55.08, 320, 330, 330, 330, 327.50, 5.00, 335, 320, 335, 375, 341.25, 23.58, 350, 320, 340, 365, 343.75, 18.87, 360, 320, 350, 345, 343.75, 17.02, 330, 340, 380, 390, 360.00, 29.44, 335, 385, 360, 370, 362.50, 21.02, 400, 420, 425, 420, 416.25, 11.09, 430, 460, 480, 470, 460.00, 21.60), ncol = 6, byrow = T, dimnames = list(c(), c("1st", "2nd", "3rd", "4th", "Mean", "SD"))) %>% 
+  # convert to dataframe
+  as.data.frame() %>% 
+  # make a column of children ID
+  mutate(children = seq(1:20)) %>% select(children, everything())
+
+# calculate the values manually
+df_bland96 %>% 
+  # take the average of mean measurements and the average of the variances
+  summarise(
+    Xw = mean(Mean),
+    Sw = sqrt(mean(SD^2))
+    ) %>% 
+  # square root the variances
+  mutate(
+    CRw = sqrt(2)*1.96*Sw,
+    CVw = 100*Sw/Xw
+    )
+
+df_bland96 %>% 
+  select(children, `1st`, `2nd`, `3rd`, `4th`) %>% mutate(children = factor(children)) %>% 
+  gather(key = measurement, value = value, -children) %>% 
+  # select only the eye ID, the eye ID, and the OCTA variable of interest
+  aov(formula = value ~ children)
+```
+
+##Table 2: Repeatability estimates of vessel density measurements
+
+<span style="color:blue">This table was modeled after Table 2 in Venugopal (2018). They stratified these values by dichotomous glaucoma status, but we're not sure if that is appropriate.</span> 
+
+```{r, echo = FALSE}
+
+# function that gets repeatability statistics
+get_repeatability <- function(df, octa_var){
+  
+  # make OCTA variable name
+  octa_name <- df %>% select(!!octa_var) %>% var_label()
+  
+  # intra-visit dataset
+  df %>% 
+    # select only the eye ID, the eye ID, and the OCTA variable of interest
+    select(Target, Judge, !!octa_var) %>% 
+    # group by measurement ID
+    group_by(Target) %>% 
+    # calculate the mean and variance of measurements for each individual
+    mutate(
+      mean = mean(!!octa_var),
+      var = sd(!!octa_var)^2
+      ) %>% 
+    # convert data to wide and remove grouping by measurement ID
+    spread(key = Judge, value = !!octa_var) %>% ungroup() %>% 
+    # take the average of mean measurements and the average of the variances
+    summarise(
+      µ = mean(mean),
+      Sw = sqrt(mean(var))
+      ) %>% 
+    # square root the variances
+    mutate(
+      CRw = sqrt(2)*1.96*Sw,
+      CVw = 100*Sw/µ,
+      octa_var = as.character(octa_name)
+      ) %>% 
+    select(octa_var, everything())
+  
+  # octa_name
+  # #Sw is the "residual standard error" from the anova output
+  # data_octa_intra %>% 
+  #   # select only the eye ID, the eye ID, and the OCTA variable of interest
+  #   select(Target, Judge, VAD) %>% mutate(Target = factor(Target)) %>% 
+  #   aov(formula = VAD ~ Target)
+
+}
+
+# call repeatability statistics on each measurement, then make into a table
+get_repeatability(df = data_octa_intra, octa_var = quo(VAD)) %>% 
+  rbind(
+    get_repeatability(df = data_octa_intra, octa_var = quo(FLUX)),
+    get_repeatability(df = data_octa_intra, octa_var = quo(PF)),
+    get_repeatability(df = data_octa_intra, octa_var = quo(FI))
+  ) %>% 
+  # make html "kable" and round digits
+  kable(digits = 3) %>%
+  kable_styling(
+    #bootstrap table classes
+    bootstrap_options = c( "hover")
+  )
+```
+
+<span style="color:blue">I still need to figure out how they calculated the 95% CIs, which I think is just $1.96*\sqrt{SE}$ because they all appear symmetric, but I'm not sure yet. Then I need to stratify these stats by glaucoma diagnosis (yes/no). - DG 8/29/2019</span>
+
+<span style="color:blue">Bruce showed me a paper that has the calculation of the confidence intervals. It's not difficult to manually code them, just need to read the paper. - DG 9/4/2019</span>
+
+##Calculating repeatability statistics
+
+Explanations of repeatability statistic calculations  
+
+###Within-subject mean $(\mu_w)$
+
+$\mu_w$ is the average measurement of both eyes for each individual. The overall mean $(\mu)$ is calculated by taking the mean of $\mu_w$ across the dataset. The overall mean is included in the final table for reference.
+
+\[ \mu_w = \frac{1}{M}\sum_{i=1}^{M} x_i  \]
+
+\[\text{where } M \text{ is the number of measurements per eye,}\]
+
+###Within-subject standard deviation $(S_w)$
+
+Find $S_w$ by first calculating the variance of the measurements per individual eye. The equation below is general for any number of measurements, but in this study there are only 2 measurements per eye.  
+
+\[ \sigma^2_{measurement} =  \frac{1}{M}\sum_{i=1}^{M} (x_i - \mu_w)^2 \]
+
+\[ \text{where } M \text{ is the number of measurements per eye}  \]
+
+To calculate $S_w$, average of the variance of measurements $(\sigma^2_{measurement})$ for all eyes measured, then take the square root.  
+
+\[ Sw =  \sqrt{\frac{1}{N}\sum_{i=1}^{N}\sigma^2_{measurement,i}} \]
+
+\[ \text{where } N \text{ is the number of eyes measured} \]
+
+###Within-subject coefficient of repeatability $(CR_w)$
+
+The $CR_w$ provides the uncertainty of repeated measures.
+
+\[ CRw = \sqrt2 * 1.96 * Sw \]
+
+The $CR_w$ can be interpreted as:  
+
+"The difference between two measurements for the same subject is expected to be less than [$CR_w$] for 95% of pairs of observations." (Bland 1996)
+
+###Within-subject coefficient of variation $(CV_w)$
+
+\[ CVw = 100 *\frac{Sw}{\mu} \]
+
+
+#Intraclass Correlation Coefficient (ICC)
+
+##Intra-Visit OCTA ICC
+
+```{r icc_intra, echo = FALSE}
+
+# function that produces a kable output for each dataset
+icc_tabulate <- function(df){
+  
+  library(ICC)
+  
+  # function that calls ICC function, adds a column to front with variable name
+  icc_that <- function(df, var){
+      c(var, ICCest(SID, var, data = df))
+  }
+  
+  # call the ICC function on each OCTA variable, then r bind into a table
+  rbind(
+    icc_that(df, "VAD"),
+    icc_that(df, "FLUX"),
+    icc_that(df, "PF"),
+    icc_that(df, "FI")
+  ) %>% as.data.frame() %>% 
+    # round columns
+    mutate(
+      ICC = as.double(ICC),
+      LowerCI = as.double(LowerCI),
+      UpperCI = as.double(UpperCI)
+      ) %>% 
+
+    # call kable
+    kable(digit = 3) %>%
+    #bootstrap table classes
+    kable_styling(bootstrap_options = c("striped", "hover")) 
+
+}
+icc_tabulate(data_octa_intra_1eye)
+```
+
+##Inter-Visit OCTA ICC
+
+```{r icc_inter, echo = FALSE}
+icc_tabulate(data_octa_inter_1eye)
+```
+
+##Calculating ICC Statistic
+
+\[ \text{ICC} = \frac{\text{between}}{\text{between} + \text{within}}\]
+
+<span style="color:blue">"In the output for the random effects model ‘SID’ is the estimated between-group variance, which in the ICCest output is called ‘vara’ (variance among groups). The within-group variance is ‘Residual’ in the random effects model output, while in ICCest it’s called ‘varw.’ You can see that the values for those two variances match perfectly in the two different outputs. The ICC is defined as between/(between+within). That calculation is not part of the random effects model output, but it is part of the ICCest output, along with confidence intervals for the ICC estimate. The ICCs are really high for intravisit (around 97%) and a little lower for intervisit (about 94%). If we were to calculate these ICCs for glaucoma and controls separately I think they would be significantly lower because of the reduced between-group variability." - BB 9/4/2019</span> 
+
+#Mixed Effects Regression Models
+
+
+##Model Fitting
+
+<span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICCs in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting. I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
+
+```{r model_fit}
+
+model1.fit <- lmer(VAD ~ (1|SID), data=data_octa_intra_1eye)
+summary(model1.fit)
+
+model2.fit <- lmer(VAD ~ SS + (1|SID), data=data_octa_intra_1eye)
+summary(model2.fit)
+```
