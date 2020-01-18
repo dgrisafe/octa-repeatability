@@ -200,7 +200,7 @@ form_vars <- function(df){
 data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "PoHx") %>% form_sociodem_vars() %>% exclude_patients()
 
 # OCTA data from group's algorithm
-data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_07_2020.xlsx")
+data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_17_2020.xlsx")
 data_octa_global <- read_xlsx(data_octa_filename, sheet = "Global") %>% form_vars() %>% exclude_patients()
 data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
 data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
@@ -1117,8 +1117,10 @@ get_blandaltman(df = data_octa_global_intra, octa_var = quo(zeiss_flux))
 Assess some of the observations outside of expected limits.
 
 ```{r}
+potential_outliers <- c(92, 95, 39, 220, 192, 183, 171, 40, 232, 21, 58, 143, 40, 183, 18, 208, 192, 21, 130, 174, 11, 171, 192, 183, 92, 95)
+
 data_octa_global_intra %>% 
-  filter(eyeid %in% c(42, 159, 177, 183, 208, 220, 239)) %>% 
+  filter(eyeid %in% potential_outliers) %>% 
   select(eyeid,	ptid, signal_strength, everything()) %>% 
   kable(digits = 3) %>%
   kable_styling(
