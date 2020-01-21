@@ -936,7 +936,7 @@ grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures Over Ti
   
 }
 
-spaghet_plot("v_area_density")
+# spaghet_plot("v_area_density")
 ```
 
 ###Vessel Area Density
@@ -1651,7 +1651,7 @@ bind_cols(
     bootstrap_options = c( "hover")
   ) %>% 
   # group column headers
-  add_header_above(c(" " = 1, "None" = 1, "Glaucoma" = 1, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2, "None" = 2, "Glaucoma" = 2)) %>% 
+  add_header_above(c(" " = 1, "Normal" = 1, "Glaucoma" = 1, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2)) %>% 
   add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
 ```
 
