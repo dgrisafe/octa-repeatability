@@ -908,42 +908,35 @@ spaghet_plot <- function(octa_var){
   # select a random sample of 10 patients
   set.seed(2448)
   ptid_sample10 <- data_octa_global_1eye %>% dplyr::filter(eye_imaged == "Right") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
+  
+  # function that creates the plot
+  get_plot_spaghet <- function(df, title, line_color){
+    df %>%
+      dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
+      ggplot(aes_string(x = "time_stamp", y = octa_var, group = "ptid")) +
+      geom_line(alpha = 0.5, size = 1, color = line_color) +
+      theme(legend.position = "none") +
+      ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
+      ggtitle(title) +
+      ylab("") +
+      xlab("") +
+      theme(
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
+      )
+  }
 
 grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures Over Time", bottom = var_labels["time_stamp"],
-             
-  data_octa_global_intra %>%
-    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
-    ggplot(aes_string(x = "time_stamp", y = octa_var, group = "ptid")) +
-    geom_line(alpha = 0.5, size = 1, color = "red") +
-    theme(legend.position = "none") +
-    ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
-    ggtitle("Intra") +
-    ylab("") +
-    xlab("") +
-    theme(
-      legend.position = "none",
-      plot.title = element_text(hjust = 0.5),
-      axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
-    ),
-  
-  data_octa_global_inter %>%
-    dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
-    ggplot(aes_string(x = "time_stamp", y = octa_var, group = "ptid")) +
-    geom_line(alpha = 0.5, size = 1, color = "blue") +
-    theme(legend.position = "none") +
-    ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
-    ggtitle("Inter") +
-    ylab("") +
-    xlab("") +
-    theme(
-      legend.position = "none",
-      plot.title = element_text(hjust = 0.5),
-      axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
-    )
+
+  get_plot_spaghet(df = data_octa_global_intra, title = "Intra", line_color = "red"),
+  get_plot_spaghet(df = data_octa_global_inter, title = "Inter", line_color = "blue")
+
 )
+  
 }
 
-# spaghet_plot("v_area_density")
+spaghet_plot("v_area_density")
 ```
 
 ###Vessel Area Density
