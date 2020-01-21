@@ -1416,7 +1416,7 @@ The $CR_w$ can be interpreted as:
 \[ CVw = 100 *\frac{Sw}{\mu} \]
 
 
-#Intraclass Correlation Coefficient, Unadjusted
+#ICC, Unadjusted
 
 Intraclass Correlation Coefficient (ICC) is scored using the **ICCest()** function from the **ICC** package. This function "estimates the ICC and confidence intervals using the variance components from a one-way ANOVA."
 
@@ -1651,8 +1651,9 @@ bind_cols(
 ```
 
 
-#Mixed Effects Regression Models
+#Mixed Models
 
+Mixed Effects Regression Models
 
 ##Model Fitting
 
