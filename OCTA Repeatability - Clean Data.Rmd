@@ -812,44 +812,39 @@ print_table1_measure(data_octa_global_inter)
 Scatter plots of OCTA variables by Subject ID for about 10 individuals randomly sampled. These are separated by intra- and inter-visit datasets, and are useful for understanding the data better.
 
 ```{r}
-
 scat_octa_sid <- function(octa_var){
 
   # select a random sample of 10 SID's
   set.seed(1998)
   ptid_sample10 <- data_octa_global_1eye %>% dplyr::filter(eye_imaged == "Right") %>% select(ptid) %>% sample_n(10) %>% unlist() %>% as.character()
   
+  get_plot_scatter <- function(df, title, line_color){
+    
+    df %>%
+      dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
+      ggplot(aes_string(x = "ptid", y = octa_var, group = "ptid")) +
+      geom_point(alpha = 0.1, size = 5, color = line_color) +
+      ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
+      ggtitle(title) +
+      ylab("") +
+      xlab("") +
+      theme(
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
+      )
+    
+  }
+
 grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures by Patient", bottom = var_labels["ptid"],
 
-             data_octa_global_intra %>%
-               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
-               ggplot(aes_string(x = "ptid", y = octa_var, group = "ptid")) +
-               geom_point(alpha = 0.1, size = 5, color = "red") +
-               ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
-               ggtitle("Intra") +
-               ylab("") +
-               xlab("") +
-               theme(
-                 legend.position = "none",
-                 plot.title = element_text(hjust = 0.5),
-                 axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
-                 ),
-             
-             data_octa_global_inter %>%
-               dplyr::filter((ptid %in% ptid_sample10) & (eye_imaged == "Right")) %>%
-               ggplot(aes_string(x = "ptid", y = octa_var, group = "ptid")) +
-               geom_point(alpha = 0.1, size = 5, color = "blue") +
-               ylim(min(data_octa_global_1eye[[octa_var]]), max(data_octa_global_1eye[[octa_var]])) +
-               ggtitle("Inter") +
-               ylab("") +
-               xlab("") +
-               theme(
-                 legend.position = "none",
-                 plot.title = element_text(hjust = 0.5),
-                 axis.text.x = element_text(angle = 30, hjust = 1, size = 7)
-                 )
+  get_plot_scatter(df = data_octa_global_intra, title = "Intra", line_color = "red"),
+  get_plot_scatter(df = data_octa_global_inter, title = "Inter", line_color = "blue")
+
 )
 }
+
+# scat_octa_sid("v_area_density")
 ```
 
 ###Vessel Area Density
