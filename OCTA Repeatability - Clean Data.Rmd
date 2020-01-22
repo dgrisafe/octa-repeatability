@@ -9,6 +9,8 @@ output:
     toc_depth: 1
 csl: ophthalmology.csl
 bibliography: references.bib
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -540,7 +542,7 @@ data_octa_global_inter180 <- data_octa_global_1eye %>% get_inter(window_days = 1
 
 ##Data Flow Chart
 
-This tallies how many participants, how many eyes, and how many measurements are included in the two datasets.
+This tallies how many participants, how many eyes, and how many measurements are included in the two data sets.
 
 ```{r}
 
@@ -617,7 +619,7 @@ Among **intervisit** data there were:
 
 #Table 1: Summary Statistics
 
-<span style="color:red">Note to Dom: Something weird is occuring with Table 1...need to debug because it shows 82 glaucoma patients, but we're saying only 81 when looking directly at the data (above).</span> 
+<span style="color:red">Note to Dom: Something weird is occurring with Table 1...need to debug because it shows 82 glaucoma patients, but we're saying only 81 when looking directly at the data (above).</span> 
 
 ```{r}
 # function to get table 1 for individual people, no repeated measurements
@@ -809,7 +811,7 @@ print_table1_measure(data_octa_global_inter)
 
 ##Scatter Plots{.tabset}
 
-Scatter plots of OCTA variables by Subject ID for about 10 individuals randomly sampled. These are separated by intra- and inter-visit datasets, and are useful for understanding the data better.
+Scatter plots of OCTA variables by Subject ID for about 10 individuals randomly sampled. These are separated by intra- and inter-visit data sets, and are useful for understanding the data better.
 
 ```{r}
 scat_octa_sid <- function(octa_var){
@@ -1432,7 +1434,7 @@ icc_tabulate <- function(df){
 
   # function that calls ICC function, adds a column to front with variable name
   icc_that <- function(df, var){
-      c(var, ICCest(eyeid, var, data = df))
+      c(var, ICCest(factor(eyeid), var, data = df))
   }
 
   # call the ICC function on each OCTA variable, then r bind into a table
@@ -1586,68 +1588,88 @@ print_table1_people(data_octa_global_intra)
 ```
 
 ##Table 2: Repeatability Statistics
-
-```{r, warning = FALSE}
+```{r}
+# choose the variables of interest in the tables
 octa_vars_select_vars <- c("v_area_density", "zeiss_v_area_density", "flux", "zeiss_flux", "v_skeleton_density")
 octa_vars_select_labels <- var_labels[octa_vars_select_vars]
 
-normal_repeat <- bind_cols(
-data_octa_global_intra %>%
-  filter(glc_dx_bin == "Normal") %>% 
-  get_repeat_table(),
-data_octa_global_intra %>%
-  filter(glc_dx_bin == "Normal") %>% 
-  icc_tabulate()
-)
-names_old <- colnames(normal_repeat)
-colnames(normal_repeat) <- paste0(names_old, "_normal")
+get_big_stats_table <- function(df_normal, df_glaucoma){
+  normal_repeat <- bind_cols(
+  df_normal %>%
+    filter(glc_dx_bin == "Normal") %>% 
+    get_repeat_table(),
+  df_normal %>%
+    filter(glc_dx_bin == "Normal") %>% 
+    icc_tabulate()
+  )
+  names_old <- colnames(normal_repeat)
+  colnames(normal_repeat) <- paste0(names_old, "_normal")
 
-glaucoma_repeat <- bind_cols(
-data_octa_global_intra %>%
-  filter(glc_dx_bin == "Glaucoma") %>% 
-  get_repeat_table(),
-data_octa_global_intra %>%
-  filter(glc_dx_bin == "Glaucoma") %>% 
-  icc_tabulate()
-)
-names_old <- colnames(glaucoma_repeat)
-colnames(glaucoma_repeat) <- paste0(names_old, "_glc")
+  glaucoma_repeat <- bind_cols(
+  df_glaucoma %>%
+    filter(glc_dx_bin == "Glaucoma") %>%
+    get_repeat_table(),
+  df_glaucoma %>%
+    filter(glc_dx_bin == "Glaucoma") %>%
+    icc_tabulate()
+  )
+  names_old <- colnames(glaucoma_repeat)
+  colnames(glaucoma_repeat) <- paste0(names_old, "_glc")
 
-bind_cols(
-  normal_repeat,
-  glaucoma_repeat
-) %>% 
-  
-  # select OCTA vars of interest
-  filter(var_name_normal %in% octa_vars_select_labels) %>%
+  bind_cols(
+    normal_repeat,
+    glaucoma_repeat
+  ) %>%
 
-  # remove unimportant variables
-  select(
-    -var_name_glc, -V1_normal, -V1_glc,
-    -starts_with("n_"), -starts_with("N_"),
-    -starts_with("k_"), -starts_with("varw_"), -starts_with("vara_")
+    # select OCTA vars of interest
+    filter(var_name_normal %in% octa_vars_select_labels) %>%
+
+    # remove unimportant variables
+    select(
+      -var_name_glc, -V1_normal, -V1_glc,
+      -starts_with("n_"), -starts_with("N_"),
+      -starts_with("k_"), -starts_with("varw_"), -starts_with("vara_")
+      ) %>%
+
+    # reorder variables
+    select(
+    starts_with("var_name_"), starts_with("V1_"), starts_with("n_"), starts_with("N_"),
+    starts_with("µ_"),
+    "ICC_pretty_normal", "ICC_pretty_cl_normal", "ICC_pretty_glc", "ICC_pretty_cl_glc",
+    "Sw_pretty_normal", "Sw_pretty_cl_normal", "Sw_pretty_glc", "Sw_pretty_cl_glc",
+    "CRw_pretty_normal", "CRw_pretty_cl_normal", "CRw_pretty_glc", "CRw_pretty_cl_glc",
+    "CVw_pretty_normal", "CVw_pretty_cl_normal", "CVw_pretty_glc", "CVw_pretty_cl_glc",
+    everything()
     ) %>% 
-  
-  # reorder variables
-  select(
-  starts_with("var_name_"), starts_with("V1_"), starts_with("n_"), starts_with("N_"),
-  starts_with("µ_"),
-  "ICC_pretty_normal", "ICC_pretty_cl_normal", "ICC_pretty_glc", "ICC_pretty_cl_glc",
-  "Sw_pretty_normal", "Sw_pretty_cl_normal", "Sw_pretty_glc", "Sw_pretty_cl_glc",
-  "CRw_pretty_normal", "CRw_pretty_cl_normal", "CRw_pretty_glc", "CRw_pretty_cl_glc",
-  "CVw_pretty_normal", "CVw_pretty_cl_normal", "CVw_pretty_glc", "CVw_pretty_cl_glc",
-  everything()
-  ) %>% 
-  
-  # make html kable
-  kable(digits = 3) %>% 
-  kable_styling(
-    #bootstrap table classes
-    bootstrap_options = c( "hover")
-  ) %>% 
-  # group column headers
-  add_header_above(c(" " = 1, "Normal" = 1, "Glaucoma" = 1, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2)) %>% 
-  add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
+    
+    # make html kable
+    kable(digits = 3, format = "html") %>% 
+    kable_styling(
+      #bootstrap table classes
+      bootstrap_options = c( "hover")
+    ) %>% 
+    # group column headers
+    add_header_above(c(" " = 1, "Normal" = 1, "Glaucoma" = 1, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2, "Normal" = 2, "Glaucoma" = 2)) %>% 
+    add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
+}
+```
+
+###Table 2a: Intra-Visit Repeatability
+All data was included for intra-visit repeatability statistics.
+```{r}
+get_big_stats_table(df_normal = data_octa_global_intra, df_glaucoma = data_octa_global_intra)
+```
+
+###Table 2b: Inter-Visit Repeatability
+
+Data was restricted differently by glaucoma status for inter-visits that occurred on different days. This was to avoid differences in data sparsity. Participants who had repeated visits with a window of:
+
+* 1 year for normal participants without glaucoma (n = `r data_octa_global_inter365 %>% filter(glc_dx_bin == "Normal") %>% group_by(ptid) %>% n_groups()`).
+
+* 6 months for participants with glaucoma (n = `r data_octa_global_inter180 %>% filter(glc_dx_bin == "Glaucoma") %>% group_by(ptid) %>% n_groups()`).
+
+```{r}
+get_big_stats_table(df_normal = data_octa_global_inter365, df_glaucoma = data_octa_global_inter180)
 ```
 
 
