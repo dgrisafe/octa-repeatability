@@ -209,7 +209,7 @@ data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "
 
 # OCTA data from group's algorithm
 data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_17_2020.xlsx")
-data_octa_global <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
+data_octa_global <- read_xlsx(data_octa_filename, sheet = "Global") %>% form_vars() %>% exclude_patients()
 data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
 data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
 data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars() %>% exclude_patients()
