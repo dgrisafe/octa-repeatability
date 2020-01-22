@@ -1658,7 +1658,18 @@ get_big_stats_table <- function(df_normal, df_glaucoma){
 ```
 
 ###Table 2a: Intra-Visit Repeatability
-All data was included for intra-visit repeatability statistics.
+```{r}
+# function that allows quick calculations of data
+get_n_disease <- function(df, disease_status){df %>% filter(glc_dx_bin == disease_status) %>% group_by(ptid) %>% n_groups()}
+```
+
+
+All data was included for intra-visit repeatability statistics:
+
+* Normal (n = `r get_n_disease(data_octa_global_intra, "Normal")`).
+
+* Glaucoma (n = `r get_n_disease(data_octa_global_intra, "Glaucoma")`).
+
 ```{r}
 get_big_stats_table(df_normal = data_octa_global_intra, df_glaucoma = data_octa_global_intra)
 ```
@@ -1667,9 +1678,9 @@ get_big_stats_table(df_normal = data_octa_global_intra, df_glaucoma = data_octa_
 
 Data was restricted differently by glaucoma status for inter-visits that occurred on different days. This was to avoid differences in data sparsity. Participants who had repeated visits with a window of:
 
-* 1 year for normal participants without glaucoma (n = `r data_octa_global_inter365 %>% filter(glc_dx_bin == "Normal") %>% group_by(ptid) %>% n_groups()`).
+* 1 year for normal participants without glaucoma (n = `r get_n_disease(data_octa_global_inter365, "Normal")`).
 
-* 6 months for participants with glaucoma (n = `r data_octa_global_inter180 %>% filter(glc_dx_bin == "Glaucoma") %>% group_by(ptid) %>% n_groups()`).
+* 6 months for participants with glaucoma (n = `r get_n_disease(data_octa_global_inter180, "Glaucoma")`).
 
 ```{r}
 get_big_stats_table(df_normal = data_octa_global_inter365, df_glaucoma = data_octa_global_inter180)
