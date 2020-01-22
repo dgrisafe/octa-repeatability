@@ -37,7 +37,7 @@ dir_data <- "/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCT
 
 #Data{.tabset}
 
-This data was taken from a clean dataset that Jae emailed out on November 26th, 2019.
+This data was taken from a clean dataset that Jae emailed out on January 16th, 2020.
 
 Jae organized the retina by six different methods. He created OCTA variable scores for the overall image, 2 hemifields, 4 quadrants, 6 sectors, 12 clock hours, and an annular ring.  
 
@@ -51,7 +51,7 @@ form_eye    <- function(x){factor(x, levels = c(1, 2), labels = c("Left",   "Rig
 form_ny     <- function(x){factor(x, levels = c(1, 2), labels = c("No",    "Yes"))}
 form_female <- function(x){factor(x, levels = c(1, 2), labels = c("Female", "Male"))}
 form_glc     <- function(x){factor(x, levels = c(1:4), labels = c("None", "Mild", "Moderate", "Severe"))}
-form_glc_bin <- function(x){factor(x, levels = c(1, 2), labels = c("None", "Glaucoma"))}
+form_glc_bin <- function(x){factor(x, levels = c(1, 2), labels = c("Normal", "Glaucoma"))}
 form_dr     <- function(x){factor(x, levels = c(1:5), labels = c("None", "Mild Non-Proliferative Diabetic Retinopathy", "Moderate Non-Proliferative Diabetic Retinopathy", "Severe Non-Proliferative Diabetic Retinopathy", "Proliferative Diabetic Retinopathy"))}
 form_surg   <- function(x){factor(x, levels = c(1:4), labels = c("None", "Laser", "Minimally Invasive Glaucoma Surgery", "Filter"))}
 form_ss <- function(x){as.integer(x)}
@@ -199,11 +199,17 @@ form_vars <- function(df){
 # create a function that removes the middle initial and titles from the names
 
 # sociodemographic data
-data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "PoHx") %>% form_sociodem_vars() %>% exclude_patients()
+data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "PoHx") %>% 
+  form_sociodem_vars() %>% 
+  exclude_patients() %>% 
+  # patient with duplicate demographic information (ptid == 6862281)
+  #    had birthday between inter-visits, so 2 different age values
+  #    use the most recent age, so demographics are for information at baseline
+  group_by(ptid) %>% top_n(x = ., n = 1, wt = -age) %>% ungroup()
 
 # OCTA data from group's algorithm
 data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_17_2020.xlsx")
-data_octa_global <- read_xlsx(data_octa_filename, sheet = "Global") %>% form_vars() %>% exclude_patients()
+data_octa_global <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
 data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
 data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
 data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars() %>% exclude_patients()
@@ -619,8 +625,6 @@ Among **intervisit** data there were:
 
 #Table 1: Summary Statistics
 
-<span style="color:red">Note to Dom: Something weird is occurring with Table 1...need to debug because it shows 82 glaucoma patients, but we're saying only 81 when looking directly at the data (above).</span> 
-
 ```{r}
 # function to get table 1 for individual people, no repeated measurements
 print_table1_people <- function(df){
@@ -700,7 +704,7 @@ print_table1_people <- function(df){
       age = as.double(age),
       signal_strength = as.double(signal_strength)
     )
-  
+
     ## export table 1 to html
     CreateTableOne(data = df_table1, vars = Vars_table1, strata = "glc_dx_bin") %>%
       print(exact = "stage", quote = FALSE, noSpaces = F, printToggle = F, varLabels = T) %>%
@@ -711,13 +715,13 @@ print_table1_people <- function(df){
       ) %>%
       pack_rows("Sociodemographic Variables", 2, 3) %>%
       pack_rows("Systemic Clinical Variables", 4, 6) %>%
-      pack_rows("Ophthalmic Clinical Variables", 7, 8) %>% 
-      pack_rows("Ophthalmic Surgical Variables", 9, 14) %>% 
-      pack_rows("OCT Angiography Signal Strength", 15, 15)
+      pack_rows("Ophthalmic Clinical Variables", 7, 8) %>%
+      pack_rows("Ophthalmic Surgical Variables", 9, 14) %>%
+      pack_rows("OCT Angiography Signal Strength", 15, 15) %>%
+      add_footnote(notation = "number", label = "Participants with glaucoma in only one eye may be counted in both 'Normal' and 'Glaucoma' groups. This situation was rare.")
 
 }
 # print_table1_people(data_octa_global_intra)
-# data_octa_global_intra %>% glimpse
 ```
 
 
