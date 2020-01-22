@@ -1355,11 +1355,13 @@ data_octa_global_intra %>%
   get_repeat_kable()
 ```
 
+
 ###Inter-Visit Repeatability
 
 Restrict to repeat measurements within a given window of time. 12 months for normal, and 6 months for glaucoma, to get similar amounts of data.
 
 ####Inter-Visit Repeatability Normal{.tabset}
+
 #####Normal, All
 ```{r}
 data_octa_global_inter %>%
@@ -1383,6 +1385,7 @@ data_octa_global_inter180 %>%
   get_repeat_table() %>% 
   get_repeat_kable()
 ```
+
 
 ####Inter-Visit Repeatability Glaucoma{.tabset}
 
