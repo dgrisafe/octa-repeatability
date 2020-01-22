@@ -1355,26 +1355,56 @@ data_octa_global_intra %>%
   get_repeat_kable()
 ```
 
-###Inter-Visit Repeatability{.tabset}
+###Inter-Visit Repeatability
 
-Restrict to repeat measurements within the last 6 months.
+Restrict to repeat measurements within a given window of time. 12 months for normal, and 6 months for glaucoma, to get similar amounts of data.
 
-####Normal, 180 Days
-
-There are way too few measurements for this table to be reliable.
-
+####Inter-Visit Repeatability Normal{.tabset}
+#####Normal, All
 ```{r}
 data_octa_global_inter %>%
-  get_inter(180) %>% 
   filter(glc_dx_bin == "Normal") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
 ```
 
-####Glaucoma, 180 Days
+#####Normal, 365 Days
+```{r}
+data_octa_global_inter365 %>% 
+  filter(glc_dx_bin == "Normal") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
+
+#####Normal, 180 Days
+```{r}
+data_octa_global_inter180 %>% 
+  filter(glc_dx_bin == "Normal") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
+
+####Inter-Visit Repeatability Glaucoma{.tabset}
+
+#####Glaucoma, All
 ```{r}
 data_octa_global_inter %>%
-  get_inter(180) %>% 
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
+
+#####Glaucoma, 365 Days
+```{r}
+data_octa_global_inter365 %>%
+  filter(glc_dx_bin == "Glaucoma") %>% 
+  get_repeat_table() %>% 
+  get_repeat_kable()
+```
+
+#####Glaucoma, 180 Days
+```{r}
+data_octa_global_inter180 %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
