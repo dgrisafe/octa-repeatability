@@ -414,7 +414,7 @@ Venugopal (2019) et al. ran the analysis including all eyes.[@venugopalRepeatabi
 
 "The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis."[@venugopalRepeatabilityComparabilityPeripapillary2019]
 
-The following results are for the single eye, chosen at random, from each participant. Bruce did explain a way to calculate ICC's for all measurements on both eyes of each participant. This will be coded later.
+The following results are for all eyes included. Results for a single eye—chosen at random—from each participant may be shown later. Bruce did explain a way to calculate ICC's for all measurements on both eyes of each participant. This may be coded later.
 
 ```{r}
 # function that gets just one eye
@@ -717,8 +717,7 @@ print_table1_people <- function(df){
       pack_rows("Systemic Clinical Variables", 4, 6) %>%
       pack_rows("Ophthalmic Clinical Variables", 7, 8) %>%
       pack_rows("Ophthalmic Surgical Variables", 9, 14) %>%
-      pack_rows("OCT Angiography Signal Strength", 15, 15) %>%
-      add_footnote(notation = "number", label = "Participants with glaucoma in only one eye may be counted in both 'Normal' and 'Glaucoma' groups. This situation was rare.")
+      pack_rows("OCT Angiography Signal Strength", 15, 15)
 
 }
 # print_table1_people(data_octa_global_intra)
