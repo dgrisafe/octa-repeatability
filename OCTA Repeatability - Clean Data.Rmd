@@ -30,10 +30,18 @@ library(gridExtra)        # allows grid arangement of dissimilar plots together
 library(grid)             # add labels to top of grid.arrange plots
 library(lme4)
 library(citr)
+library(details)          # allows hiding r objects in html "details packages"
 
 # directories
 dir_data <- "/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data/Jae"
 ```
+
+##Session Information
+```{r}
+# prints session info
+details::details(object = sessioninfo::session_info(), summary = 'current session info')
+```
+
 
 #Data{.tabset}
 
