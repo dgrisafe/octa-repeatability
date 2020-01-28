@@ -1510,7 +1510,6 @@ icc_tabulate <- function(df){
     # order desirably
     select(V1, N, ICC_pretty, ICC_pretty_cl, everything())
 
-
 }
 
 icc_tabulate_kable <- function(df_kable){
