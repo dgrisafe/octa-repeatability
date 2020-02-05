@@ -1,5 +1,5 @@
 ---
-title: "OCTA Repeatability & Reliability — Clean Data"
+title: "OCTA Reliability — Clean Data"
 author: "Jae Lee, Bruce Burkemper, Dom Grisafe, Grace Richter"
 date: "`r Sys.Date()`"
 output:
@@ -10,7 +10,7 @@ output:
 csl: ophthalmology.csl
 bibliography: references.bib
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -41,6 +41,17 @@ dir_data <- "/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCT
 # prints session info
 details::details(object = sessioninfo::session_info(), summary = 'current session info')
 ```
+
+
+#Aim
+
+The aim of this study is to obtain the **Reliability** estimates of the OCTA measurements.
+
+Reliability incorporates:
+
+- **Repeatability** - How reliable are repeated measures on the same day (**Intra-Visit**)
+
+- **Reproducibility** - How reliable are repeated measures over multiple visits (**Inter-Visit**)
 
 
 #Data{.tabset}
@@ -444,10 +455,11 @@ get_1eye <- function(df){
   
 }
 
-# get_1eye(data_octa_global_rename) %>% glimpse
-
 # dataset of one eye
 data_octa_global_1eye <- data_octa_global_rename %>% get_1eye()
+
+# data set with both eyes
+data_octa_global_2eye <- data_octa_global_rename
 ```
 
 #Subsetting Cohorts
@@ -482,7 +494,8 @@ get_intra <- function(df){
 }
  
 # create intra dataset for global data 
-data_octa_global_intra <- data_octa_global_1eye %>% get_intra()
+data_octa_global_intra_1eye <- data_octa_global_1eye %>% get_intra()
+data_octa_global_intra_2eye <- data_octa_global_2eye %>% get_intra()
 ```
 
 ##Inter-Visit Data
@@ -545,13 +558,16 @@ get_inter <- function(df, window_days){
 }
 
 # create inter dataset for global data, infinite day window
-data_octa_global_inter <- data_octa_global_1eye %>% get_inter(window_days = Inf)
+data_octa_global_inter_1eye <- data_octa_global_1eye %>% get_inter(window_days = Inf)
+data_octa_global_inter_2eye <- data_octa_global_2eye %>% get_inter(window_days = Inf)
 
 # create inter dataset for global data, 365 day window
-data_octa_global_inter365 <- data_octa_global_1eye %>% get_inter(window_days = 365.25)
+data_octa_global_inter_1eye365 <- data_octa_global_1eye %>% get_inter(window_days = 365.25)
+data_octa_global_inter_2eye365 <- data_octa_global_2eye %>% get_inter(window_days = 365.25)
 
 # create inter dataset for global data, 180 day window
-data_octa_global_inter180 <- data_octa_global_1eye %>% get_inter(window_days = 180)
+data_octa_global_inter_1eye180 <- data_octa_global_1eye %>% get_inter(window_days = 180)
+data_octa_global_inter_2eye180 <- data_octa_global_2eye %>% get_inter(window_days = 180)
 ```
 
 ##Data Flow Chart
@@ -560,35 +576,46 @@ This tallies how many participants, how many eyes, and how many measurements are
 
 ```{r}
 
-data.frame(
+get_flow_chart <- function(df_intra, df_inter){
   
-  dataset = c(
-    "Intra-Visit",
-    "Inter-Visit"
-    ),
-  
-  #number of participants
-  n_participants = c(
-    data_octa_global_intra %>% group_by(ptid) %>% summarise(n()) %>% nrow(),
-    data_octa_global_inter %>% group_by(ptid) %>% summarise(n()) %>% nrow()
-    ),
-  
-  #number of eyes
-  n_eyes = c(
-    data_octa_global_intra %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow(),
-    data_octa_global_inter %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()
-    ),
-  
-  # number of measurements
-  n_measurements = c(
-    data_octa_global_intra %>% nrow(),
-    data_octa_global_inter %>% nrow()
+  data.frame(
+    
+    dataset = c(
+      "Intra-Visit",
+      "Inter-Visit"
+      ),
+    
+    #number of participants
+    n_participants = c(
+      df_intra %>% group_by(ptid) %>% summarise(n()) %>% nrow(),
+      df_inter %>% group_by(ptid) %>% summarise(n()) %>% nrow()
+      ),
+    
+    #number of eyes
+    n_eyes = c(
+      df_intra %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow(),
+      df_inter %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()
+      ),
+    
+    # number of measurements
+    n_measurements = c(
+      df_intra %>% nrow(),
+      df_inter %>% nrow()
+      )
+    
     )
-  
-  ) %>%
+
+}
+
+bind_rows(
+  get_flow_chart(df_inter =  data_octa_global_inter_1eye, df_intra = data_octa_global_intra_1eye),
+  get_flow_chart(df_inter =  data_octa_global_inter_2eye, df_intra = data_octa_global_intra_2eye)
+) %>% 
   kable() %>% 
-  kable_styling(bootstrap_options = c("striped", "hover")) %>% 
-  pack_rows("Global Data", 1, 2)
+    kable_styling(bootstrap_options = c("striped", "hover")) %>% 
+    pack_rows("Global Data - Single Eye, Random", 1, 2) %>% 
+    pack_rows("Global Data - Both Eyes", 3, 4) 
+
 ```
 
 ```{r}
@@ -605,30 +632,61 @@ get_count_obs <- function(df){
       glaucoma = count_data$patients[count_data$glc_dx_bin == "Glaucoma"])
   )}
 
-count <- get_count_obs(data_octa_global_1eye)
+# single eye
+count_1eye <- get_count_obs(data_octa_global_1eye)
+count_intra_1eye <- get_count_obs(data_octa_global_intra_1eye)
+count_inter_1eye <- get_count_obs(data_octa_global_inter_1eye)
 
-count_intra <- get_count_obs(data_octa_global_intra)
-
-count_inter <- get_count_obs(data_octa_global_inter)
+# both eyes
+count_2eye <- get_count_obs(data_octa_global_2eye)
+count_intra_2eye <- get_count_obs(data_octa_global_intra_2eye)
+count_inter_2eye <- get_count_obs(data_octa_global_inter_2eye)
 ```
+
+###Single Eye, Random
+
+After randomly selecting for one eye per participant,
 
 **Overall** there were:
 
-- `r count$measurements$normal` measurements of `r count$patients$normal` patients without glaucoma
+- `r count_1eye$measurements$normal` measurements of `r count_1eye$patients$normal` patients without glaucoma
 
-- `r count$measurements$glaucoma` measurements of `r count$patients$glaucoma` patients with glaucoma
+- `r count_1eye$measurements$glaucoma` measurements of `r count_1eye$patients$glaucoma` patients with glaucoma
 
 Among **intravisit** data there were:
 
-- `r count_intra$measurements$normal` measurements of `r count_intra$patients$normal` patients without glaucoma
+- `r count_intra_1eye$measurements$normal` measurements of `r count_intra_1eye$patients$normal` patients without glaucoma
 
-- `r count_intra$measurements$glaucoma` measurements of `r count_intra$patients$glaucoma` patients with glaucoma
+- `r count_intra_1eye$measurements$glaucoma` measurements of `r count_intra_1eye$patients$glaucoma` patients with glaucoma
 
 Among **intervisit** data there were:
 
-- `r count_inter$measurements$normal` measurements of `r count_inter$patients$normal` patients without glaucoma
+- `r count_inter_1eye$measurements$normal` measurements of `r count_inter_1eye$patients$normal` patients without glaucoma
 
-- `r count_inter$measurements$glaucoma` measurements of `r count_inter$patients$glaucoma` patients with glaucoma
+- `r count_inter_1eye$measurements$glaucoma` measurements of `r count_inter_1eye$patients$glaucoma` patients with glaucoma
+
+
+###Both Eyes
+
+When including both eyes of participants,
+
+**Overall** there were:
+
+- `r count_2eye$measurements$normal` measurements of `r count_2eye$patients$normal` patients without glaucoma
+
+- `r count_2eye$measurements$glaucoma` measurements of `r count_2eye$patients$glaucoma` patients with glaucoma
+
+Among **intravisit** data there were:
+
+- `r count_intra_2eye$measurements$normal` measurements of `r count_intra_2eye$patients$normal` patients without glaucoma
+
+- `r count_intra_2eye$measurements$glaucoma` measurements of `r count_intra_2eye$patients$glaucoma` patients with glaucoma
+
+Among **intervisit** data there were:
+
+- `r count_inter_2eye$measurements$normal` measurements of `r count_inter_2eye$patients$normal` patients without glaucoma
+
+- `r count_inter_2eye$measurements$glaucoma` measurements of `r count_inter_2eye$patients$glaucoma` patients with glaucoma
 
 
 #Table 1: Summary Statistics
@@ -728,7 +786,7 @@ print_table1_people <- function(df){
       pack_rows("OCT Angiography Signal Strength", 15, 15)
 
 }
-# print_table1_people(data_octa_global_intra)
+# print_table1_people(data_octa_global_intra_1eye)
 ```
 
 
@@ -785,8 +843,9 @@ print_table1_measure <- function(df){
       pack_rows("OCT Angiography Variables", 38, 46)
     
 }
-# print_table1(data_octa_global_intra)
+# print_table1(data_octa_global_intra_1eye)
 ```
+
 
 ##Intra-Visit OCTA Summary Statistics{.tabset}
 
@@ -794,14 +853,19 @@ Variables in intra-visit dataset
 
 ###Participants
 ```{r, message = FALSE}
-print_table1_people(data_octa_global_intra)
+print_table1_people(data_octa_global_intra_1eye)
 ```
 
-
-###Measurements
+###Measurements, Single Eye
 ```{r, warning = FALSE}
-print_table1_measure(data_octa_global_intra)
+print_table1_measure(data_octa_global_intra_1eye)
 ```
+
+###Measurements, Both Eyes
+```{r, warning = FALSE}
+print_table1_measure(data_octa_global_intra_2eye)
+```
+
 
 ##Inter-Visit OCTA Summary Statistics{.tabset}
 
@@ -809,14 +873,18 @@ Variables in inter-visit dataset
 
 ###Participants
 ```{r, message = FALSE}
-print_table1_people(data_octa_global_inter)
+print_table1_people(data_octa_global_inter_1eye)
 ```
 
-###Measurements
+###Measurements, Single Eye
 ```{r}
-print_table1_measure(data_octa_global_inter)
+print_table1_measure(data_octa_global_inter_1eye)
 ```
 
+###Measurements, Both Eyes
+```{r}
+print_table1_measure(data_octa_global_inter_2eye)
+```
 
 #Exploratory Data Analysis
 
@@ -851,8 +919,8 @@ scat_octa_sid <- function(octa_var){
 
 grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures by Patient", bottom = var_labels["ptid"],
 
-  get_plot_scatter(df = data_octa_global_intra, title = "Intra", line_color = "red"),
-  get_plot_scatter(df = data_octa_global_inter, title = "Inter", line_color = "blue")
+  get_plot_scatter(df = data_octa_global_intra_1eye, title = "Intra", line_color = "red"),
+  get_plot_scatter(df = data_octa_global_inter_1eye, title = "Inter", line_color = "blue")
 
 )
 }
@@ -937,8 +1005,8 @@ spaghet_plot <- function(octa_var){
 
 grid.arrange(ncol = 2, left = var_labels[octa_var], top = "OCTA Measures Over Time", bottom = var_labels["time_stamp"],
 
-  get_plot_spaghet(df = data_octa_global_intra, title = "Intra", line_color = "red"),
-  get_plot_spaghet(df = data_octa_global_inter, title = "Inter", line_color = "blue")
+  get_plot_spaghet(df = data_octa_global_intra_1eye, title = "Intra", line_color = "red"),
+  get_plot_spaghet(df = data_octa_global_inter_1eye, title = "Inter", line_color = "blue")
 
 )
   
@@ -1064,53 +1132,53 @@ get_blandaltman <- function(df, octa_var){
   grid.arrange(ncol = 2, top = octa_name, p_blandalt, p_diffdist)
 }
 
-# get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_area_density))
+# get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_area_density))
 ```
 
 
 ###Vessel Area Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_area_density))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_area_density))
 ```
 
 ###Vessel Area Density, Zeiss
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(zeiss_v_area_density))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(zeiss_v_area_density))
 ```
 
 ###Vessel Diameter
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_diameter))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_diameter))
 ```
 
 ###Vessel Skeleton Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_skeleton_density))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_skeleton_density))
 ```
 
 ###Vessel Perimeter Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_perimeter_index))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_perimeter_index))
 ```
 
 ###Vessel Complexity Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(v_complexity_index))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_complexity_index))
 ```
 
 ###Flow Impairment Zone
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(flow_impair_zone))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(flow_impair_zone))
 ```
 
 ###Flux
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(flux))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(flux))
 ```
 
 ###Flux, Zeiss
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_intra, octa_var = quo(zeiss_flux))
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(zeiss_flux))
 ```
 
 ###Outliers
@@ -1120,7 +1188,7 @@ Assess some of the observations outside of expected limits.
 ```{r}
 potential_outliers <- c(92, 95, 39, 220, 192, 183, 171, 40, 232, 21, 58, 143, 40, 183, 18, 208, 192, 21, 130, 174, 11, 171, 192, 183, 92, 95)
 
-data_octa_global_intra %>% 
+data_octa_global_intra_1eye %>% 
   filter(eyeid %in% potential_outliers) %>% 
   select(eyeid,	ptid, signal_strength, everything()) %>% 
   kable(digits = 3) %>%
@@ -1137,47 +1205,47 @@ Inter-Visit Bland-Altman Plots of OCTA Variables
 
 ###Vessel Area Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_area_density))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(v_area_density))
 ```
 
 ###Vessel Area Density, Zeiss
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(zeiss_v_area_density))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(zeiss_v_area_density))
 ```
 
 ###Vessel Diameter
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_diameter))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(v_diameter))
 ```
 
 ###Vessel Skeleton Density
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_skeleton_density))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(v_skeleton_density))
 ```
 
 ###Vessel Perimeter Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_perimeter_index))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(v_perimeter_index))
 ```
 
 ###Vessel Complexity Index
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(v_complexity_index))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(v_complexity_index))
 ```
 
 ###Flow Impairment Zone
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(flow_impair_zone))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(flow_impair_zone))
 ```
 
 ###Flux
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(flux))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(flux))
 ```
 
 ###Flux, Zeiss
 ```{r, warning = FALSE}
-get_blandaltman(df = data_octa_global_inter, octa_var = quo(zeiss_flux))
+get_blandaltman(df = data_octa_global_inter_1eye, octa_var = quo(zeiss_flux))
 ```
 
 
@@ -1186,7 +1254,7 @@ get_blandaltman(df = data_octa_global_inter, octa_var = quo(zeiss_flux))
 Assess some of the observations outside of expected limits.
 
 ```{r}
-data_octa_global_inter %>% 
+data_octa_global_inter_1eye %>% 
   filter(eyeid %in% c(42, 75, 82, 92, 220, 232, 244)) %>% 
   select(eyeid,	ptid, signal_strength, everything()) %>% 
   kable(digits = 3) %>%
@@ -1196,9 +1264,9 @@ data_octa_global_inter %>%
   )
 ```
 
-#Repeatability
+#Reliability
 
-Repeatability of OCTA Variables
+Reliability of OCTA Variables
 
 Calculate the within-subject standard deviation $(S_w)$, the within-subject coefficient of repeatability $(CR_w)$, and the within-subject coefficient of variation $(CV_w)$ for a given measurement variable $x$.  
 
@@ -1235,15 +1303,15 @@ df_bland96 %>%
   aov(formula = value ~ children)
 ```
 
-##Table 2: Repeatability
+##Table 2: Reliability
 
-Table 2 shows repeatability estimates of vessel density measurements.
+Table 2 shows Reliability estimates of vessel density measurements.
 
 <span style="color:blue">This table was modeled after Table 2 in Venugopal (2018).[@venugopalRepeatabilityVesselDensity2018]</span> 
 
 ```{r}
-# function that gets repeatability statistics
-get_repeatability <- function(df, octa_var){
+# function that gets Reliability statistics
+get_reliability <- function(df, octa_var){
 
 trim3 <- function(x){sprintf("%.3f", round(x, 3))}
 
@@ -1317,17 +1385,17 @@ trim3 <- function(x){sprintf("%.3f", round(x, 3))}
 
 get_repeat_table <- function(df_table){
   
-  # call repeatability statistics on each measurement, then make into a table
-  get_repeatability(df = df_table, octa_var = quo(v_diameter)) %>%
+  # call reliability statistics on each measurement, then make into a table
+  get_reliability(df = df_table, octa_var = quo(v_diameter)) %>%
     rbind(
-      get_repeatability(df = df_table, octa_var = quo(v_area_density)),
-      get_repeatability(df = df_table, octa_var = quo(zeiss_v_area_density)),
-      get_repeatability(df = df_table, octa_var = quo(v_skeleton_density)),
-      get_repeatability(df = df_table, octa_var = quo(v_perimeter_index)),
-      get_repeatability(df = df_table, octa_var = quo(v_complexity_index)),
-      get_repeatability(df = df_table, octa_var = quo(flow_impair_zone)),
-      get_repeatability(df = df_table, octa_var = quo(flux)),
-      get_repeatability(df = df_table, octa_var = quo(zeiss_flux))
+      get_reliability(df = df_table, octa_var = quo(v_area_density)),
+      get_reliability(df = df_table, octa_var = quo(zeiss_v_area_density)),
+      get_reliability(df = df_table, octa_var = quo(v_skeleton_density)),
+      get_reliability(df = df_table, octa_var = quo(v_perimeter_index)),
+      get_reliability(df = df_table, octa_var = quo(v_complexity_index)),
+      get_reliability(df = df_table, octa_var = quo(flow_impair_zone)),
+      get_reliability(df = df_table, octa_var = quo(flux)),
+      get_reliability(df = df_table, octa_var = quo(zeiss_flux))
     ) 
 
 }
@@ -1349,7 +1417,7 @@ get_repeat_kable <- function(df_kable){
 
 ####Normal
 ```{r}
-data_octa_global_intra %>%
+data_octa_global_intra_1eye %>%
   filter(glc_dx_bin == "Normal") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
@@ -1357,22 +1425,22 @@ data_octa_global_intra %>%
 
 ####Glaucoma
 ```{r}
-data_octa_global_intra %>%
+data_octa_global_intra_1eye %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
 ```
 
 
-###Inter-Visit Repeatability
+###Inter-Visit Reproducibility
 
 Restrict to repeat measurements within a given window of time. 12 months for normal, and 6 months for glaucoma, to get similar amounts of data.
 
-####Inter-Visit Repeatability Normal{.tabset}
+####Inter-Visit Reproducibility Normal{.tabset}
 
 #####Normal, All
 ```{r}
-data_octa_global_inter %>%
+data_octa_global_inter_1eye %>%
   filter(glc_dx_bin == "Normal") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
@@ -1380,7 +1448,7 @@ data_octa_global_inter %>%
 
 #####Normal, 365 Days
 ```{r}
-data_octa_global_inter365 %>% 
+data_octa_global_inter_1eye365 %>% 
   filter(glc_dx_bin == "Normal") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
@@ -1388,18 +1456,18 @@ data_octa_global_inter365 %>%
 
 #####Normal, 180 Days
 ```{r}
-data_octa_global_inter180 %>% 
+data_octa_global_inter_1eye180 %>% 
   filter(glc_dx_bin == "Normal") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
 ```
 
 
-####Inter-Visit Repeatability Glaucoma{.tabset}
+####Inter-Visit Reproducibility Glaucoma{.tabset}
 
 #####Glaucoma, All
 ```{r}
-data_octa_global_inter %>%
+data_octa_global_inter_1eye %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
@@ -1407,7 +1475,7 @@ data_octa_global_inter %>%
 
 #####Glaucoma, 365 Days
 ```{r}
-data_octa_global_inter365 %>%
+data_octa_global_inter_1eye365 %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
@@ -1415,15 +1483,15 @@ data_octa_global_inter365 %>%
 
 #####Glaucoma, 180 Days
 ```{r}
-data_octa_global_inter180 %>%
+data_octa_global_inter_1eye180 %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   get_repeat_table() %>% 
   get_repeat_kable()
 ```
 
-##Calculating Repeatability Statistics
+##Calculating Reliability Statistics
 
-Explanations of repeatability statistic calculations  
+Explanations of reliability statistic calculations  
 
 ###Within-Subject Mean $(\mu_w)$
 
@@ -1474,7 +1542,9 @@ icc_tabulate <- function(df){
 
   library(ICC)
   
+  # functions for formatting stats and confidence intervasls
   trim3 <- function(x){sprintf("%.3f", round(as.double(x), 3))}
+  trim_ci_pretty <- function(lcl, ucl){paste0("(", trim3(lcl), ", ", trim3(ucl), ")")}
 
   # function that calls ICC function, adds a column to front with variable name
   icc_that <- function(df, var){
@@ -1502,7 +1572,7 @@ icc_tabulate <- function(df){
       vara = as.double(vara),
       
       ICC_pretty = trim3(ICC),
-      ICC_pretty_cl = paste0("(", trim3(LowerCI), ", ", trim3(UpperCI), ")")
+      ICC_pretty_cl = trim_ci_pretty(LowerCI, UpperCI)
       ) %>% 
     
     # remove unweildy variables
@@ -1528,7 +1598,7 @@ icc_tabulate_kable <- function(df_kable){
 
 ###Normal
 ```{r, warning=FALSE}
-data_octa_global_intra %>%
+data_octa_global_intra_1eye %>%
   filter(glc_dx_bin == "Normal") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1536,7 +1606,7 @@ data_octa_global_intra %>%
 
 ###Glaucoma
 ```{r, warning=FALSE}
-data_octa_global_intra %>%
+data_octa_global_intra_1eye %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1549,7 +1619,7 @@ data_octa_global_intra %>%
 
 ####Normal, All
 ```{r, warning=FALSE}
-data_octa_global_inter %>%
+data_octa_global_inter_1eye %>%
   filter(glc_dx_bin == "Normal") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1557,7 +1627,7 @@ data_octa_global_inter %>%
 
 ####Normal, 365 Days
 ```{r, warning=FALSE}
-data_octa_global_inter365 %>%
+data_octa_global_inter_1eye365 %>%
   filter(glc_dx_bin == "Normal") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1565,7 +1635,7 @@ data_octa_global_inter365 %>%
 
 ####Normal, 180 Days
 ```{r, warning=FALSE}
-data_octa_global_inter180 %>%
+data_octa_global_inter_1eye180 %>%
   filter(glc_dx_bin == "Normal") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1575,7 +1645,7 @@ data_octa_global_inter180 %>%
 
 ####Glaucoma
 ```{r, warning=FALSE}
-data_octa_global_inter %>%
+data_octa_global_inter_1eye %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1583,7 +1653,7 @@ data_octa_global_inter %>%
 
 ####Glaucoma, 365 Days
 ```{r, warning=FALSE}
-data_octa_global_inter365 %>%
+data_octa_global_inter_1eye365 %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1591,7 +1661,7 @@ data_octa_global_inter365 %>%
 
 ####Glaucoma, 180 Days
 ```{r, warning=FALSE}
-data_octa_global_inter180 %>%
+data_octa_global_inter_1eye180 %>%
   filter(glc_dx_bin == "Glaucoma") %>% 
   icc_tabulate() %>% 
   icc_tabulate_kable
@@ -1608,32 +1678,34 @@ data_octa_global_inter180 %>%
 
 ##Table 1: Participants
 
+After randomly selecting for one eye per participant,
+
 **Overall** there were:
 
-- `r count$measurements$normal` measurements of `r count$patients$normal` patients without glaucoma
+- `r count_1eye$measurements$normal` measurements of `r count_1eye$patients$normal` patients without glaucoma
 
-- `r count$measurements$glaucoma` measurements of `r count$patients$glaucoma` patients with glaucoma
+- `r count_1eye$measurements$glaucoma` measurements of `r count_1eye$patients$glaucoma` patients with glaucoma
 
 Among **intravisit** data there were:
 
-- `r count_intra$measurements$normal` measurements of `r count_intra$patients$normal` patients without glaucoma
+- `r count_intra_1eye$measurements$normal` measurements of `r count_intra_1eye$patients$normal` patients without glaucoma
 
-- `r count_intra$measurements$glaucoma` measurements of `r count_intra$patients$glaucoma` patients with glaucoma
+- `r count_intra_1eye$measurements$glaucoma` measurements of `r count_intra_1eye$patients$glaucoma` patients with glaucoma
 
 Among **intervisit** data there were:
 
-- `r count_inter$measurements$normal` measurements of `r count_inter$patients$normal` patients without glaucoma
+- `r count_inter_1eye$measurements$normal` measurements of `r count_inter_1eye$patients$normal` patients without glaucoma
 
-- `r count_inter$measurements$glaucoma` measurements of `r count_inter$patients$glaucoma` patients with glaucoma
+- `r count_inter_1eye$measurements$glaucoma` measurements of `r count_inter_1eye$patients$glaucoma` patients with glaucoma
 
 ```{r}
-print_table1_people(data_octa_global_intra)
+print_table1_people(data_octa_global_intra_1eye)
 ```
 
-##Table 2: Repeatability Statistics
+##Table 2: Reliability Statistics
 ```{r}
 # choose the variables of interest in the tables
-octa_vars_select_vars <- c("v_area_density", "zeiss_v_area_density", "flux", "zeiss_flux", "v_skeleton_density")
+octa_vars_select_vars <- c("v_area_density", "zeiss_v_area_density", "v_skeleton_density", "flux", "zeiss_flux")
 octa_vars_select_labels <- var_labels[octa_vars_select_vars]
 
 get_big_stats_table <- function(df_normal, df_glaucoma){
@@ -1704,26 +1776,30 @@ get_n_disease <- function(df, disease_status){df %>% filter(glc_dx_bin == diseas
 ```
 
 
-All data was included for intra-visit repeatability statistics:
+All data was included for intra-visit repeatability statistics.
 
-* Normal (n = `r get_n_disease(data_octa_global_intra, "Normal")`).
+Intra-visit repeatability statistics for participants with repeated measurements on the same day:
 
-* Glaucoma (n = `r get_n_disease(data_octa_global_intra, "Glaucoma")`).
+* Normal (n = `r get_n_disease(data_octa_global_intra_1eye, "Normal")`).
+
+* Glaucoma (n = `r get_n_disease(data_octa_global_intra_1eye, "Glaucoma")`).
 
 ```{r}
-get_big_stats_table(df_normal = data_octa_global_intra, df_glaucoma = data_octa_global_intra)
+get_big_stats_table(df_normal = data_octa_global_intra_1eye, df_glaucoma = data_octa_global_intra_1eye)
 ```
 
-###Table 2b: Inter-Visit Repeatability
+###Table 2b: Inter-Visit Reproducibility
 
-Data was restricted differently by glaucoma status for inter-visits that occurred on different days. This was to avoid differences in data sparsity. Participants who had repeated visits with a window of:
+Data was restricted to 1 year for inter-visits that occurred on different days. This was to avoid changes in eyes over a long amount of time. 
 
-* 1 year for normal participants without glaucoma (n = `r get_n_disease(data_octa_global_inter365, "Normal")`).
+Inter-visit reproducibility statistics for participants with repeated measurements within a 1 year window
 
-* 6 months for participants with glaucoma (n = `r get_n_disease(data_octa_global_inter180, "Glaucoma")`).
+* Normal (n = `r get_n_disease(data_octa_global_inter_1eye365, "Normal")`).
+
+* Glaucoma (n = `r get_n_disease(data_octa_global_inter_1eye365, "Glaucoma")`).
 
 ```{r}
-get_big_stats_table(df_normal = data_octa_global_inter365, df_glaucoma = data_octa_global_inter180)
+get_big_stats_table(df_normal = data_octa_global_inter_1eye365, df_glaucoma = data_octa_global_inter_1eye365)
 ```
 
 
@@ -1736,18 +1812,132 @@ Mixed Effects Regression Models
 <span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICC in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting." - BB 9/4/2019</span>
 
 ```{r}
-model1.fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_global_intra)
-summary(model1.fit)
-
-# model2.fit <- lmer(v_area_density ~ (1|ptid/eyeid), data=data_octa_global_intra)
-# summary(model2.fit)
+model_1eye_fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_global_intra_1eye)
+summary(model_1eye_fit)
 ```
 
 <span style="color:blue">"I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
 
 ```{r}
-model3.fit <- lmer(v_area_density ~ signal_strength + (1|ptid), data=data_octa_global_intra)
-summary(model3.fit)
+model_ss_fit <- lmer(v_area_density ~ signal_strength + (1|ptid), data = data_octa_global_intra_1eye)
+summary(model_ss_fit)
+```
+
+
+#Mixed Models with Both Eyes
+
+```{r}
+# OCTA outcome variables of interest
+# octa_vars_select_vars    # defined above about line 1700
+
+# dataframes of glaucoma disease status
+df_normal   <- data_octa_global_intra_2eye %>% filter(glc_dx_bin == "Normal")
+df_glaucoma <- data_octa_global_intra_2eye %>% filter(glc_dx_bin == "Glaucoma")
+
+# function that returns ICC w/95% confidence intervals 
+get_adjusted_icc <- function(df, measurement){
+  
+  # format formula of measurement outcome and random effects of patient and eye
+  lmer_formula <- as.formula(paste(measurement, "~ (1 | ptid / eyeid)"))
+  
+  # linear mixed effects model
+  model_2eye <- lmer(lmer_formula, data = df)
+  
+  # function that calculates ICC
+  calc_icc <- function(x){
+    
+    # print variances from lme model
+    var_corr <- as.data.frame(VarCorr(x))
+    
+    # get variance between: patient variance + eye variance
+    var_between <- var_corr$vcov[1] + var_corr$vcov[2]
+    
+    # get variance within: residual variance
+    var_within  <- var_corr$vcov[3]
+    
+    # calculate icc
+    (var_between) / (var_between + var_within)
+    
+  }
+  
+  # calculate ICC confidence intervals with bootstrap methods
+  #     assumes normal distribution of residuals
+  #     https://stats.stackexchange.com/questions/184767/how-do-i-calculate-the-confidence-interval-of-an-icc
+  
+    # calculate the bootstrap distribution
+    boot_icc <- bootMer(model_2eye, calc_icc, nsim = 10)   # nsim = 1000 is standards, but 10 makes it run fast, remember to switch to 1000 when running the final thing
+    
+    # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
+    cl95 <- quantile(boot_icc$t, c(0.025, 0.975))
+    
+    # return ICC w/95% confidence intervals
+    return(
+      data_frame(
+        
+        var_name = measurement,
+      
+        # calculate icc
+        icc = calc_icc(model_2eye),
+        
+        # 95% lower CL
+        icc_lower_cl = cl95[[1]],
+        
+        # 95% upper CL
+        icc_upper_cl = cl95[[2]]
+      
+      ))
+    
+}
+
+# function that applies the ICC function to multiple OCTA outcome variables
+get_icc_disease_group <- function(df, var_names){
+  
+  # get name of disease group
+  disease_group_name <- deparse(substitute(df))
+  
+  # bind all the icc outcomes
+  bind_rows(
+    map(
+      .x = var_names,
+      .f = get_adjusted_icc,
+      df = df_normal
+      )) %>% 
+    
+    # add column of glaucoma disease status
+    mutate(disease = str_remove(disease_group_name, "df_"))
+  
+}
+
+# get raw data for table
+table_data <- bind_rows(
+  get_icc_disease_group(df_normal,   octa_vars_select_vars),
+  get_icc_disease_group(df_glaucoma, octa_vars_select_vars)
+) %>% 
+  # create pretty, formatted variables for data
+  mutate(      
+    pretty_icc = trim3(icc),
+    pretty_icc_cl = trim_ci_pretty(icc_lower_cl, icc_upper_cl)
+    ) %>% 
+  # spread data
+  pivot_wider(id_cols = var_name, values_from = c(icc, icc_lower_cl, icc_upper_cl, pretty_icc, pretty_icc_cl), names_from = disease) %>% 
+  # order variables into proper format
+  select(var_name, ends_with("normal"), ends_with("glaucoma"))
+
+# select pretty data only for printing
+table_data_pretty <- table_data %>% 
+  select(var_name, starts_with("pretty")) %>% 
+  mutate(var_name = var_labels[octa_vars_select_vars])
+
+# make kable of table output
+table_data_pretty %>% 
+  kable(digits = 3, format = "html") %>% 
+      kable_styling(
+        #bootstrap table classes
+        bootstrap_options = c( "hover")
+      ) %>% 
+      # group column headers
+      add_header_above(c(" " = 1, "Normal" = 2, "Glaucoma" = 2)) %>% 
+      add_header_above(c("OCTA Variable" = 1, "ICC" = 4))
 ```
 
 
