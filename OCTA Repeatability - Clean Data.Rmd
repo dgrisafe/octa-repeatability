@@ -29,6 +29,7 @@ theme_set(theme_cowplot())
 library(gridExtra)        # allows grid arangement of dissimilar plots together
 library(grid)             # add labels to top of grid.arrange plots
 library(lme4)
+library(lmerTest)
 library(citr)
 library(details)          # allows hiding r objects in html "details packages"
 
@@ -43,6 +44,7 @@ details::details(object = sessioninfo::session_info(), summary = 'current sessio
 ```
 
 
+
 #Aim
 
 The aim of this study is to obtain the **Reliability** estimates of the OCTA measurements.
@@ -54,6 +56,7 @@ Reliability incorporates:
 - **Reproducibility** - How reliable are repeated measures over multiple visits (**Inter-Visit**)
 
 
+
 #Data{.tabset}
 
 This data was taken from a clean dataset that Jae emailed out on January 16th, 2020.
@@ -63,6 +66,12 @@ Jae organized the retina by six different methods. He created OCTA variable scor
 Annular image scoring was also assessed, and ICC's were similar, but slightly lower than global. Results for annular image scoring are not shown. For now, only the overall "global" image scoring will be shown.
 
 Zeiss commercial **vessel area density** and **flux** variables are also shown for the global image scoring.
+
+```{r}
+# functions for formatting stats and confidence intervasls (used at end of analysis)
+trim3 <- function(x){sprintf("%.3f", round(as.double(x), 3))}
+trim_ci_pretty <- function(lcl, ucl){paste0("(", trim3(lcl), ", ", trim3(ucl), ")")}
+```
 
 ```{r}
 # common factor formats
@@ -339,6 +348,7 @@ data_dict <-  data.frame(var_labels) %>%
 ```
 
 
+
 ##Data Wrangling
 
 ###Rename Variables
@@ -414,6 +424,8 @@ label(data_octa_annulus_rename) <- as.list(var_labels[match(names(data_octa_annu
 # label(data_octa_clockhour_rename) <- as.list(var_labels[match(names(data_octa_clockhour_rename), names(var_labels))])
 ```
 
+
+
 ##Data Dictionary
 
 ```{r}
@@ -427,13 +439,17 @@ data_dict %>%
   pack_rows("OCT Angiography Variables", 13, 30) 
 ```
 
+
+
 #Single Eye Participation
 
 Venugopal (2019) et al. ran the analysis including all eyes.[@venugopalRepeatabilityComparabilityPeripapillary2019] Then they re-ran the analysis after selecting only a single eye randomly from each individual. They conclude minimal difference in the findings, and they report only the analysis that includes all eyes: 
 
 "The entire analysis was repeated considering one eye per subject (one eye was randomly chosen from subjects contributing both eyes for the primary analysis) and all the results were similar to the primary analysis."[@venugopalRepeatabilityComparabilityPeripapillary2019]
 
-The following results are for all eyes included. Results for a single eye—chosen at random—from each participant may be shown later. Bruce did explain a way to calculate ICC's for all measurements on both eyes of each participant. This may be coded later.
+The following results are for a single eye—chosen at random—from each participant. 
+
+Later, towards the bottom of the analysis, the reliability statistics have been repeated for both eyes using linear mixed effects models. 
 
 ```{r}
 # function that gets just one eye
@@ -461,6 +477,8 @@ data_octa_global_1eye <- data_octa_global_rename %>% get_1eye()
 # data set with both eyes
 data_octa_global_2eye <- data_octa_global_rename
 ```
+
+
 
 #Subsetting Cohorts
 
@@ -689,6 +707,7 @@ Among **intervisit** data there were:
 - `r count_inter_2eye$measurements$glaucoma` measurements of `r count_inter_2eye$patients$glaucoma` patients with glaucoma
 
 
+
 #Table 1: Summary Statistics
 
 ```{r}
@@ -886,6 +905,8 @@ print_table1_measure(data_octa_global_inter_1eye)
 print_table1_measure(data_octa_global_inter_2eye)
 ```
 
+
+
 #Exploratory Data Analysis
 
 ##Scatter Plots{.tabset}
@@ -1059,6 +1080,8 @@ spaghet_plot("flux")
 ```{r}
 spaghet_plot("zeiss_flux")
 ```
+
+
 
 #Bland-Altman Plots
 
@@ -1264,6 +1287,8 @@ data_octa_global_inter_1eye %>%
   )
 ```
 
+
+
 #Reliability
 
 Reliability of OCTA Variables
@@ -1434,7 +1459,7 @@ data_octa_global_intra_1eye %>%
 
 ###Inter-Visit Reproducibility
 
-Restrict to repeat measurements within a given window of time. 12 months for normal, and 6 months for glaucoma, to get similar amounts of data.
+Restrict to repeat measurements within a given window of time to minimize differences due to real changes in psychopathology.
 
 ####Inter-Visit Reproducibility Normal{.tabset}
 
@@ -1530,21 +1555,20 @@ The $CR_w$ can be interpreted as:
 \[ CVw = 100 *\frac{Sw}{\mu} \]
 
 
-#ICC, Unadjusted
+
+#ICC, One Eye
 
 Intraclass Correlation Coefficient (ICC) is scored using the **ICCest()** function from the **ICC** package. This function "estimates the ICC and confidence intervals using the variance components from a one-way ANOVA."
 
-This is a preliminary result, as we want to calculate the ICC after adjusting for participant, eye (left or right), signal strength, and clinical and other variables. This will be done later in the mixed effects regression models.
+ICCest() adjusts for repeat measurements on each participant, but not for repeat measurements on both eyes. Therefore, ICC calculations with this function will be done for data from 1 eye per participant.
+
+This is a preliminary result, as we want to calculate the ICC after adjusting for participant and eye (left or right). This will be done later in the mixed effects regression models.
 
 ```{r}
 # function that produces a kable output for internal datasets
 icc_tabulate <- function(df){
 
   library(ICC)
-  
-  # functions for formatting stats and confidence intervasls
-  trim3 <- function(x){sprintf("%.3f", round(as.double(x), 3))}
-  trim_ci_pretty <- function(lcl, ucl){paste0("(", trim3(lcl), ", ", trim3(ucl), ")")}
 
   # function that calls ICC function, adds a column to front with variable name
   icc_that <- function(df, var){
@@ -1594,7 +1618,7 @@ icc_tabulate_kable <- function(df_kable){
 ```
 
 
-##Intra-Visit ICC, Unadjusted{.tabset}
+##Intra-Visit ICC, One Eye{.tabset}
 
 ###Normal
 ```{r, warning=FALSE}
@@ -1613,7 +1637,7 @@ data_octa_global_intra_1eye %>%
 ```
 
 
-##Inter-Visit ICC, Unadjusted
+##Inter-Visit ICC, One Eye
 
 ###Inter-Visit ICC Normal{.tabset}
 
@@ -1674,7 +1698,13 @@ data_octa_global_inter_1eye180 %>%
 
 <span style="color:blue">"In the output for the random effects model ‘SID’ is the estimated between-group variance, which in the ICCest output is called ‘vara’ (variance among groups). The within-group variance is ‘Residual’ in the random effects model output, while in ICCest it’s called ‘varw.’ You can see that the values for those two variances match perfectly in the two different outputs. The ICC is defined as between/(between+within). That calculation is not part of the random effects model output, but it is part of the ICCest output, along with confidence intervals for the ICC estimate. The ICC are really high for intravisit (around 97%) and a little lower for intervisit (about 94%). If we were to calculate these ICC for glaucoma and controls separately I think they would be significantly lower because of the reduced between-group variability." - BB 9/4/2019</span> 
 
-#ARVO Abstract Tables
+
+
+#ARVO Abstract Tables, One Eye
+
+**Do not use these tables for the final write-up.**
+
+Originally, we submitted the abstract to ARVO after calculating reliability statistics on one, randomly selected eye per person. These are kept in the analysis here just to show what we had previously shown. Now, we have calculated these statistics using both eyes (down below). So when writing the final paper, only include those.
 
 ##Table 1: Participants
 
@@ -1702,7 +1732,7 @@ Among **intervisit** data there were:
 print_table1_people(data_octa_global_intra_1eye)
 ```
 
-##Table 2: Reliability Statistics
+##Table 2: Reliability Statistics, One Eye
 ```{r}
 # choose the variables of interest in the tables
 octa_vars_select_vars <- c("v_area_density", "zeiss_v_area_density", "v_skeleton_density", "flux", "zeiss_flux")
@@ -1803,141 +1833,347 @@ get_big_stats_table(df_normal = data_octa_global_inter_1eye365, df_glaucoma = da
 ```
 
 
-#Mixed Models
 
-Mixed Effects Regression Models
+#Mixed Models, Both Eyes
 
-##Model Fitting
+Mixed Effects Regression Models allow random effects for certain variables. This allows us to include multiple measurements from the same person and eye while still satisfying independence.
 
-<span style="color:blue">"For the markdown file let’s just spit out all the output from the random effects model and the iccest command so we can show it to Grace. Eventually we can put the ICC in the table with the other repeatability measures you have already tabled but I don’t think we need it for the meeting." - BB 9/4/2019</span>
+##Adjusting for Patients
+
+This model has a random effect for the participant ID, which accounts for repeated measurements on the same person. This does not, however, account for measurements on more than one eye per person. Therefore the data was used that randomly selected one eye per participant. Later models will adjust for this.
+
+This should produce the same ICC and other reliability statistics as the ICCest() function in the tables above. These were not calculated out to compare. Just one model is shown for explanation.
 
 ```{r}
 model_1eye_fit <- lmer(v_area_density ~ (1|ptid), data=data_octa_global_intra_1eye)
 summary(model_1eye_fit)
 ```
 
-<span style="color:blue">"I also added a model to test whether SS influences reliability. The reference level is ‘10’ now, which is what we want, and you can see that SS is highly associated with VAD, meaning it affects reliability." - BB 9/4/2019</span>
+
+##Adjusting for Both Eyes and Patients
+
+Linear, mixed-effects modeling was used to account for repeated measurements on both eyes of each participant. This allows random effects for both the patient and the eye (left or right), allowing us to model the ICC and other reliability statistics without violating independence.
 
 ```{r}
-model_ss_fit <- lmer(v_area_density ~ signal_strength + (1|ptid), data = data_octa_global_intra_1eye)
-summary(model_ss_fit)
+# example of the linear mixed effect model that accounts for random patient and eye terms
+model_2eye_fit <- lmer(v_area_density ~ (1 | ptid / eyeid), data = data_octa_global_intra_2eye)
+summary(model_2eye_fit)
+```
+
+### Table 3: Reliability Statistics, Both Eyes
+```{r}
+# this function calculates the reliability statistics, but for both eyes, not just one
+get_big_stats_table_2eyes <- function(df){
+
+  # OCTA outcome variables of interest
+  # octa_vars_select_vars    # defined above about line 1700
+
+  # dataframes of glaucoma disease status
+  df_normal   <- df %>% filter(glc_dx_bin == "Normal")
+  df_glaucoma <- df %>% filter(glc_dx_bin == "Glaucoma")
+  
+  # function that returns ICC w/95% confidence intervals 
+  get_adjusted_icc <- function(measurement, df){
+    
+    # format formula of measurement outcome and random effects of patient and eye
+    lmer_formula <- as.formula(paste(measurement, "~ (1 | ptid / eyeid)"))
+    
+    # linear mixed effects model
+    model_2eye <- lmer(lmer_formula, data = df)
+    
+    # calculate mean of variable
+    mean_measure <- mean(df[[measurement]])
+  
+    # function that calculates ICC
+    calc_icc <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+   
+      # get variance between: patient variance + eye variance
+      var_between <- var_corr$vcov[1] + var_corr$vcov[2]
+      
+      # get variance within: residual variance
+      var_within  <- var_corr$vcov[3]
+      
+      # calculate icc
+      (var_between) / (var_between + var_within)
+      
+    }
+    
+    # function that caclulates Sw, Within-Subject Standard Deviation
+    calc_sw <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+      
+      # Sw is the standard error of the residual term in the model
+      var_corr$sdcor[3]
+  
+    }
+    
+    # function that caclulates CRw, Within-Subject Coefficient of Repeatability
+    calc_crw <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+      
+      # CRw is the standard error of the residual term in the model, times Sqrt(2), times 1.96
+      var_corr$sdcor[3] * sqrt(2) * 1.96
+  
+    }
+    
+    # function that caclulates CVw, Within-Subject Coefficient of Variation
+    calc_cvw <- function(x, mu_mean){
+        
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+        
+      # CVw is the standard error of the residual term in the model, divided by the mean
+      var_corr$sdcor[3] / mean_measure * 100
+    
+    }
+    
+    # calculate confidence intervals with bootstrap methods
+    #     assumes normal distribution of residuals
+    #     https://stats.stackexchange.com/questions/184767/how-do-i-calculate-the-confidence-interval-of-an-icc
+    get_cl95 <- function(x){
+      
+      # calculate the bootstrap distribution
+      boot_x <- bootMer(model_2eye, x, nsim = 100)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
+      
+      # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
+      quantile(boot_x$t, c(0.025, 0.975))
+      
+    }
+      
+      # return ICC w/95% confidence intervals
+      return(
+        tibble(
+          
+          # variable name
+          var_name = measurement,
+          
+          # average measurement
+          mu = mean_measure,
+        
+          # calculate icc
+          icc = calc_icc(model_2eye),
+          
+            # 95% lower CL
+            icc_lower_cl = get_cl95(calc_icc)[[1]],
+            
+            # 95% upper CL
+            icc_upper_cl = get_cl95(calc_icc)[[2]],
+          
+          # calculate sw
+          sw = calc_sw(model_2eye),
+          
+            # 95% lower CL
+            sw_lower_cl = get_cl95(calc_sw)[[1]],
+            
+            # 95% upper CL
+            sw_upper_cl = get_cl95(calc_sw)[[2]],      
+          
+          # calculate CRw
+          crw = calc_crw(model_2eye),
+          
+            # 95% lower CL
+            crw_lower_cl = get_cl95(calc_crw)[[1]],
+            
+            # 95% upper CL
+            crw_upper_cl = get_cl95(calc_crw)[[2]],   
+          
+          # calculate CVw
+          cvw = calc_cvw(model_2eye),
+          
+            # 95% lower CL
+            cvw_lower_cl = get_cl95(calc_cvw)[[1]],
+            
+            # 95% upper CL
+            cvw_upper_cl = get_cl95(calc_cvw)[[2]]
+          
+        ))
+      
+  }
+  
+  # function that applies the ICC function to multiple OCTA outcome variables
+  get_icc_disease_group <- function(var_names, df_disease){
+    
+    # get name of disease group
+    disease_group_name <- deparse(substitute(df_disease))
+    
+    # bind all the icc outcomes
+    bind_rows(
+      map(
+        .x = var_names,
+        .f = get_adjusted_icc,
+        df = df_disease
+        )) %>% 
+      
+      # add column of glaucoma disease status
+      mutate(disease = str_remove(disease_group_name, "df_"))
+    
+  }
+  
+  # names of variables to include in tables
+  vars_reliable_table <- c("mu", outer(c("icc", "sw", "crw", "cvw"), c("", "_lower_cl", "_upper_cl"), FUN = "paste0")) 
+  vars_reliable_table_pretty <- paste0("pretty_", unique(str_remove(vars_reliable_table, pattern = regex("_lower|_upper"))))
+  
+  # get raw data for table
+  table_data <- bind_rows(
+    get_icc_disease_group(var_names = octa_vars_select_vars, df_normal),
+    get_icc_disease_group(var_names = octa_vars_select_vars, df_glaucoma)
+  ) %>% 
+    # create pretty, formatted variables for data
+    mutate(      
+      pretty_mu = trim3(mu),
+      pretty_icc = trim3(icc),
+      pretty_icc_cl = trim_ci_pretty(icc_lower_cl, icc_upper_cl),
+      pretty_sw = trim3(sw),
+      pretty_sw_cl = trim_ci_pretty(sw_lower_cl, sw_upper_cl),
+      pretty_crw = trim3(crw),
+      pretty_crw_cl = trim_ci_pretty(crw_lower_cl, crw_upper_cl),    
+      pretty_cvw = trim3(cvw),
+      pretty_cvw_cl = trim_ci_pretty(cvw_lower_cl, cvw_upper_cl)
+      ) %>% 
+    # spread data
+    pivot_wider(id_cols = var_name, names_from = disease, values_from = c(vars_reliable_table, vars_reliable_table_pretty)) %>% 
+    # order variables into proper format
+    select(var_name, ends_with("normal"), ends_with("glaucoma")) %>%     # first order by disease status: normal, glaucoma
+    select(var_name, contains("mu_"), contains("icc_"), contains("sw_"), contains("crw_"), contains("cvw_")) # then order by reliability: mu, icc, sw, etc.
+  
+  # select pretty data only for printing
+  table_data_pretty <- table_data %>% 
+    select(var_name, starts_with("pretty")) %>% 
+    mutate(var_name = var_labels[octa_vars_select_vars])
+  
+  # make kable of table output
+  table_data_pretty %>% 
+    kable(digits = 3, format = "html") %>% 
+        kable_styling(
+          #bootstrap table classes
+          bootstrap_options = c( "hover")
+        ) %>% 
+        # group column headers
+        add_header_above(c(" " = 1, "Normal" = 1, "Glaucoma" = 1, rep(c("Normal" = 2, "Glaucoma" = 2), times = 4))) %>% 
+        add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
+  
+}
+```
+
+### Table 3a: Both Eyes, Intra-Visit Repeatability
+```{r}
+get_big_stats_table_2eyes(df = data_octa_global_intra_2eye)
+```
+
+### Table 3b: Both Eyes, Inter-Visit Reproducibility{.tabset}
+Look at data by different time restrictions, to see if the ICC increases as the window of time shortens.
+
+**I recommend we use the one that restricts to a single year (365 Days), in spite of the singularity warning. I included all possibilities for reference, however.
+
+####All
+```{r}
+get_big_stats_table_2eyes(df = data_octa_global_inter_2eye)
+```
+
+####365 Days
+```{r}
+get_big_stats_table_2eyes(df = data_octa_global_inter_2eye365)
+```
+
+####180 Days
+```{r}
+get_big_stats_table_2eyes(df = data_octa_global_inter_2eye180)
 ```
 
 
-#Mixed Models with Both Eyes
+
+# Signal Strength, Both Eyes
+
+We take for granted that signal strength affects the OCTA outcome variables. But we should still show this formally, as Venugopal 2018 has at the end of their paper.
+
+"Signal strength index values of the scans had a significant effect on the repeatability of OCTA with the vessel density values increasing in scans with higher SSI values." [@venugopalRepeatabilityVesselDensity2018]
+
+Their result is a simple table of regression estimates for signal strength, shown in the output below. We're really showing here that SS is important to include as a covariate in measurements that use OCTA.
+
+## Linear Mixed Effects Model
+This is an example of the LME Model used to calculate coefficients in the table below
+```{r}
+model_ss_fit <- lmer(v_area_density ~ signal_strength + (1|ptid / eyeid), data = data_octa_global_intra_2eye)
+summary(model_ss_fit)
+```
+
+## Signal Strength Affects Reliability of OCTA Measurements{.tabset}
 
 ```{r}
 # OCTA outcome variables of interest
 # octa_vars_select_vars    # defined above about line 1700
 
-# dataframes of glaucoma disease status
-df_normal   <- data_octa_global_intra_2eye %>% filter(glc_dx_bin == "Normal")
-df_glaucoma <- data_octa_global_intra_2eye %>% filter(glc_dx_bin == "Glaucoma")
+get_ss_table <- function(df_disease){
 
-# function that returns ICC w/95% confidence intervals 
-get_adjusted_icc <- function(df, measurement){
-  
-  # format formula of measurement outcome and random effects of patient and eye
-  lmer_formula <- as.formula(paste(measurement, "~ (1 | ptid / eyeid)"))
-  
-  # linear mixed effects model
-  model_2eye <- lmer(lmer_formula, data = df)
-  
-  # function that calculates ICC
-  calc_icc <- function(x){
+  get_ss_row <- function(measurement, df){
     
-    # print variances from lme model
-    var_corr <- as.data.frame(VarCorr(x))
+    # formula for signal strength
+    formula_ss <- as.formula(paste0(measurement, " ~ signal_strength + (1|ptid / eyeid)"))
     
-    # get variance between: patient variance + eye variance
-    var_between <- var_corr$vcov[1] + var_corr$vcov[2]
+    # get model
+    model_ss_fit <- lmer(formula_ss, data = df)
     
-    # get variance within: residual variance
-    var_within  <- var_corr$vcov[3]
+    # get beta statistics table
+    beta_out <- summary(model_ss_fit)$coefficients 
     
-    # calculate icc
-    (var_between) / (var_between + var_within)
+    # get names of variables
+    vars <- beta_out %>% row.names()
+    
+    # get index that corresponds to signal_strength
+    index_ss <- 2
+    
+    # create output as a single horizontal row
+    beta_out_ss <- beta_out[index_ss,] %>% t() %>% as.data.frame()
+    
+    # add parameter outcome and estimate (ss) before stats
+    bind_cols(octa_outcome = measurement, parameter = vars[index_ss], beta_out_ss)
     
   }
   
-  # calculate ICC confidence intervals with bootstrap methods
-  #     assumes normal distribution of residuals
-  #     https://stats.stackexchange.com/questions/184767/how-do-i-calculate-the-confidence-interval-of-an-icc
-  
-    # calculate the bootstrap distribution
-    boot_icc <- bootMer(model_2eye, calc_icc, nsim = 10)   # nsim = 1000 is standards, but 10 makes it run fast, remember to switch to 1000 when running the final thing
-    
-    # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
-    cl95 <- quantile(boot_icc$t, c(0.025, 0.975))
-    
-    # return ICC w/95% confidence intervals
-    return(
-      data_frame(
-        
-        var_name = measurement,
-      
-        # calculate icc
-        icc = calc_icc(model_2eye),
-        
-        # 95% lower CL
-        icc_lower_cl = cl95[[1]],
-        
-        # 95% upper CL
-        icc_upper_cl = cl95[[2]]
-      
-      ))
-    
-}
-
-# function that applies the ICC function to multiple OCTA outcome variables
-get_icc_disease_group <- function(df, var_names){
-  
-  # get name of disease group
-  disease_group_name <- deparse(substitute(df))
-  
-  # bind all the icc outcomes
-  bind_rows(
-    map(
-      .x = var_names,
-      .f = get_adjusted_icc,
-      df = df_normal
-      )) %>% 
-    
-    # add column of glaucoma disease status
-    mutate(disease = str_remove(disease_group_name, "df_"))
-  
-}
-
-# get raw data for table
-table_data <- bind_rows(
-  get_icc_disease_group(df_normal,   octa_vars_select_vars),
-  get_icc_disease_group(df_glaucoma, octa_vars_select_vars)
-) %>% 
-  # create pretty, formatted variables for data
-  mutate(      
-    pretty_icc = trim3(icc),
-    pretty_icc_cl = trim_ci_pretty(icc_lower_cl, icc_upper_cl)
+  # get data table for signal strength beta estimates
+  ss_table <- map_dfr(
+    .x = octa_vars_select_vars,
+    .f = get_ss_row,
+    df = df_disease
     ) %>% 
-  # spread data
-  pivot_wider(id_cols = var_name, values_from = c(icc, icc_lower_cl, icc_upper_cl, pretty_icc, pretty_icc_cl), names_from = disease) %>% 
-  # order variables into proper format
-  select(var_name, ends_with("normal"), ends_with("glaucoma"))
+    # create pretty variables
+    mutate(
+      l_95_cl = Estimate - 1.96 * `Std. Error`,
+      u_95_cl = Estimate + 1.96 * `Std. Error`,
+      pretty_beta = trim3(Estimate),
+      pretty_se = trim3(`Std. Error`),
+      pretty_cl = trim_ci_pretty(l_95_cl, u_95_cl),
+      pretty_pval = trim3(`Pr(>|t|)`)
+    )
+  
+  ss_table %>% 
+    select(octa_outcome, parameter, pretty_beta, pretty_se, pretty_cl, pretty_pval) %>% 
+    kable() %>% 
+    kable_styling(bootstrap_options = c( "hover"))
+  
+}
+```
 
-# select pretty data only for printing
-table_data_pretty <- table_data %>% 
-  select(var_name, starts_with("pretty")) %>% 
-  mutate(var_name = var_labels[octa_vars_select_vars])
+###Overall
+```{r}
+get_ss_table(df_disease = data_octa_global_intra_2eye)
+```
 
-# make kable of table output
-table_data_pretty %>% 
-  kable(digits = 3, format = "html") %>% 
-      kable_styling(
-        #bootstrap table classes
-        bootstrap_options = c( "hover")
-      ) %>% 
-      # group column headers
-      add_header_above(c(" " = 1, "Normal" = 2, "Glaucoma" = 2)) %>% 
-      add_header_above(c("OCTA Variable" = 1, "ICC" = 4))
+###Normal
+```{r}
+get_ss_table(df_disease = data_octa_global_intra_2eye %>% dplyr::filter(glc_dx_bin == "Normal"))
+```
+
+###Glaucoma
+```{r}
+get_ss_table(df_disease = data_octa_global_intra_2eye %>% dplyr::filter(glc_dx_bin == "Glaucoma"))
 ```
 
 
