@@ -2112,7 +2112,7 @@ get_big_stats_table_2eyes <- function(df){
     get_cl95 <- function(x){
       
       # calculate the bootstrap distribution
-      boot_x <- bootMer(model_2eye, x, nsim = 1)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
+      boot_x <- bootMer(model_2eye, x, nsim = 100)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
       
       # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
       quantile(boot_x$t, c(0.025, 0.975))
