@@ -223,6 +223,7 @@ form_vars <- function(df){
 }
 ```
 
+**Note to Dom**: The analysis was originally built with the global data. Towards the end of our work, we decided annulus would be a better data to use. I had already built the analysis using global data, so I just "trojan horsed" the annulus excel data into the global analysis that already exists. This is a bit of a hack, but saves an immense amount of time.
 ```{r, message = FALSE, warning = FALSE}
 # create a function that removes the middle initial and titles from the names
 
@@ -237,7 +238,7 @@ data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "
 
 # OCTA data from group's algorithm
 data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_17_2020.xlsx")
-data_octa_global <- read_xlsx(data_octa_filename, sheet = "Global") %>% form_vars() %>% exclude_patients()
+data_octa_global <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()    # THIS IS NOT AN ERROR!!! I INTENTIONALLY "TROJAN HORSED" THE ANNULUS INTO THE GLOBAL TO QUICKLY GET THE ANALYSIS FOR ANNULUS
 data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
 data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
 data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars() %>% exclude_patients()
@@ -332,14 +333,14 @@ var_labels <- c(
   image_size = "Image Size",
   signal_strength = "Signal Strength",
   v_diameter = "Vessel Diameter (units?)",
-  v_area_density = "Vessel Area Density (units?)",
+  v_area_density = "Vessel Area Density",
   v_skeleton_density = "Vessel Skeleton Density (units?)",
   v_perimeter_index = "Vessel Perimeter Index (units?)",
   v_complexity_index = "Vessel Complexity Index (units?)",
   flow_impair_zone = "Flow Impairment Zone (units?)",
-  flux = "Flux (units?)",
-  zeiss_v_area_density = "Vessel Area Density (units?), Zeiss Commercial",
-  zeiss_flux = "Flux (units?), Zeiss Commercial"
+  flux = "Flux",
+  zeiss_v_area_density = "Vessel Area Density, Zeiss",
+  zeiss_flux = "Flux, Zeiss"
 )
 
 # assign variable labels
@@ -1095,15 +1096,75 @@ Intra-Visit Bland-Altman Plots of OCTA Variables
 
 ```{r, warning = FALSE}
 
-# function that gets repeatability statistics
-get_blandaltman <- function(df, octa_var){
+# # function that gets repeatability statistics
+# get_blandaltman <- function(df, octa_var){
+# 
+#   # make OCTA variable name
+#   octa_name_df <- df %>% mutate(label = label(!!octa_var))
+#   octa_name <- octa_name_df[1, "label"] %>% as.character()
+#   
+#   # intra-visit dataset
+#   data_blandalt <- df %>%
+# 
+#     # select only the measurement ID and the OCTA variable of interest
+#     select(ptid, eye_imaged, order_obs, eyeid, !!octa_var) %>%
+#         
+#     # only select the first 2 measurements
+#     filter(order_obs <= 2) %>% 
+# 
+#     group_by(ptid, eye_imaged) %>% 
+# 
+#     # calculate the difference and mean of measurements for each individual eye
+#     mutate(
+#       diff = diff(!!octa_var),
+#       mean = mean(!!octa_var)
+#       ) %>% ungroup() %>% 
+#     select(!!octa_var, everything())
+# 
+#   p_blandalt <- data_blandalt %>%
+#     ggplot(aes(x = mean, y = diff)) +
+#     scale_y_continuous(limits = c(-max(data_blandalt$diff)*1.5, max(data_blandalt$diff)*1.5)) +
+#     geom_point(size = 0.6, alpha = 0.9) +
+#     geom_hline(yintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
+#     geom_hline(yintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+#     geom_hline(yintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+#     geom_text(aes(label = ifelse(
+#       diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
+#       diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
+#         yes = as.character(eyeid), no = ''
+#       )), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
+#     ggtitle("") +
+#     ylab("Difference in Measurements") +
+#     xlab("Average Measurements")
+# 
+#   p_diffdist <- data_blandalt %>%
+#     ggplot(aes(x = diff)) +
+#     geom_vline(xintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
+#     geom_vline(xintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+#     geom_vline(xintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
+#     geom_histogram(bins = 30, alpha = 0.9) +
+#     geom_text(aes(label = ifelse(
+#       diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
+#       diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
+#         yes = as.character(eyeid), no = ''
+#       ), y = 6), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
+#     scale_y_continuous(limits = c(0, 200), breaks = seq(0,200,50)) +
+#     scale_x_continuous(limits = c(-max(data_blandalt$diff)*1.5, max(data_blandalt$diff)*1.5)) +
+#     ggtitle("") +
+#     xlab("Difference in Measurements")
+# 
+#   grid.arrange(ncol = 2, top = octa_name, p_blandalt, p_diffdist)
+# }
+# get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_area_density))
+```
 
-  # make OCTA variable name
-  octa_name_df <- df %>% mutate(label = label(!!octa_var))
-  octa_name <- octa_name_df[1, "label"] %>% as.character()
-  
+```{r, warning = FALSE}
+
+# function that gets repeatability statistics
+get_blandaltman_data <- function(df, octa_var){
+
   # intra-visit dataset
-  data_blandalt <- df %>%
+  df %>%
 
     # select only the measurement ID and the OCTA variable of interest
     select(ptid, eye_imaged, order_obs, eyeid, !!octa_var) %>%
@@ -1120,42 +1181,69 @@ get_blandaltman <- function(df, octa_var){
       ) %>% ungroup() %>% 
     select(!!octa_var, everything())
 
-  p_blandalt <- data_blandalt %>%
+}
+
+get_blandaltman_plot <- function(df){
+  
+  data_blandalt <- df
+  
+  df %>%
     ggplot(aes(x = mean, y = diff)) +
     scale_y_continuous(limits = c(-max(data_blandalt$diff)*1.5, max(data_blandalt$diff)*1.5)) +
-    geom_point(size = 0.6, alpha = 0.9) +
+    geom_point(size = 0.1, alpha = 1) +
     geom_hline(yintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
     geom_hline(yintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
-    geom_hline(yintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
-    geom_text(aes(label = ifelse(
-      diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
-      diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
-        yes = as.character(eyeid), no = ''
-      )), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
-    ggtitle("") +
-    ylab("Difference in Measurements") +
-    xlab("Average Measurements")
+    geom_hline(yintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) 
+    # this adds the labels to the data points that are over the 95% CI's...comment out if not interested
+    # geom_text(aes(label = ifelse(
+    #   diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
+    #   diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
+    #     yes = as.character(eyeid), no = ''
+    #   )), hjust = 0, vjust = 0, color = "darkgray", size = 3) 
 
-  p_diffdist <- data_blandalt %>%
+}
+
+get_blandaltman_hist <- function(df){
+  
+  data_blandalt <- df
+  
+  df %>%
     ggplot(aes(x = diff)) +
     geom_vline(xintercept = mean(data_blandalt$diff), colour = "blue", size = 0.5, linetype = 2) +
     geom_vline(xintercept = mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
     geom_vline(xintercept = mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)), colour = "red", size = 0.5, linetype = 2) +
     geom_histogram(bins = 30, alpha = 0.9) +
-    geom_text(aes(label = ifelse(
-      diff >  mean(data_blandalt$diff) + (1.96 * sd(data_blandalt$diff)) |
-      diff <  mean(data_blandalt$diff) - (1.96 * sd(data_blandalt$diff)),
-        yes = as.character(eyeid), no = ''
-      ), y = 6), hjust = 0, vjust = 0, color = "darkgray", size = 3) +
     scale_y_continuous(limits = c(0, 200), breaks = seq(0,200,50)) +
     scale_x_continuous(limits = c(-max(data_blandalt$diff)*1.5, max(data_blandalt$diff)*1.5)) +
     ggtitle("") +
     xlab("Difference in Measurements")
-
-  grid.arrange(ncol = 2, top = octa_name, p_blandalt, p_diffdist)
+  
 }
 
-# get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_area_density))
+get_blandaltman <- function(df, octa_var){
+  
+  # make OCTA variable name
+  octa_name_df <- df %>% mutate(label = label(!!octa_var))
+  octa_name <- octa_name_df[1, "label"] %>% as.character()
+  
+  p_data <- get_blandaltman_data(df, octa_var)
+  
+  p1 <- get_blandaltman_plot(p_data) +
+    ggtitle("") +
+    ylab("Difference in Measurements") +
+    xlab("Average Measurements")
+  
+  p2 <- get_blandaltman_hist(p_data)
+    
+  grid.arrange(ncol = 2, top = octa_name, p1, p2)
+  
+}
+
+# both plots
+get_blandaltman(df = data_octa_global_intra_1eye, octa_var = quo(v_area_density))
+
+# just one plot
+# get_blandaltman_data(data_octa_global_intra_2eye, quo(v_area_density)) %>% get_blandaltman_plot()
 ```
 
 
@@ -1838,6 +1926,89 @@ get_big_stats_table(df_normal = data_octa_global_inter_1eye365, df_glaucoma = da
 
 Mixed Effects Regression Models allow random effects for certain variables. This allows us to include multiple measurements from the same person and eye while still satisfying independence.
 
+##Figure 1
+
+Here are the Bland Altman Plots for OCTA outcomes in both eyes. The variables of interest are VAD and FLUX for the current algorithm and the Zeiss algorithm. This is an interesting plot to show before explaing the mixed effects model.
+```{r, warning = FALSE}
+# function that creates bland altman plot data for each OCTA variable of interest
+get_ba_data <- function(df, outcome){
+  
+  # get variable for dplyr
+  outcome_dplyr <- enquo(outcome)
+  
+  # make OCTA variable name
+  octa_name_df <- df %>% mutate(label = label(!!outcome_dplyr))
+  octa_name <- octa_name_df[1, "label"] %>% as.character()
+  
+  get_blandaltman_data(df, outcome_dplyr) %>% 
+    # create an indicator variable of the octa variable
+    mutate(outcome = octa_name) %>% 
+    select(ptid, eye_imaged, order_obs, eyeid, outcome, diff, mean)
+
+}
+
+# create intra data
+ba_data_intra <- bind_rows(
+  get_ba_data(data_octa_global_intra_2eye, v_area_density),
+  get_ba_data(data_octa_global_intra_2eye, zeiss_v_area_density),
+  get_ba_data(data_octa_global_intra_2eye, flux),
+  get_ba_data(data_octa_global_intra_2eye, zeiss_flux)
+) %>% 
+  # add the name of the data set
+  mutate(data_type = "Intra-Visit")
+
+# create inter data
+ba_data_inter <- bind_rows(
+  get_ba_data(data_octa_global_inter_2eye, v_area_density),
+  get_ba_data(data_octa_global_inter_2eye, zeiss_v_area_density),
+  get_ba_data(data_octa_global_inter_2eye, flux),
+  get_ba_data(data_octa_global_inter_2eye, zeiss_flux)
+) %>% 
+  # add the name of the data set
+  mutate(data_type = "Inter-Visit")
+
+# combine intra and inter datasets
+ba_data <- bind_rows(
+  ba_data_intra,
+  ba_data_inter
+) %>% 
+  mutate(
+    outcome = factor(outcome, levels = c("Vessel Area Density", "Vessel Area Density, Zeiss", "Flux", "Flux, Zeiss")),
+    data_type = factor(data_type, levels = c("Intra-Visit", "Inter-Visit"))
+  )
+
+# get summary data for confidence intervals
+ba_data_summary <- ba_data %>% 
+  group_by(data_type, outcome) %>% 
+  summarise(
+    diff_mean = mean(diff),
+    diff_l95cl = diff_mean - 1.96*sd(diff),
+    diff_u95cl = diff_mean + 1.96*sd(diff)
+  )
+
+# create bland altman plot from data
+figure1_facet <- ba_data %>% 
+  ggplot(aes(x = mean, y = diff)) +
+  geom_point(size = 0.1, alpha = 1) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
+  facet_grid(outcome ~ data_type) +
+  ylab("Difference in Measurements") +
+  xlab("Average Measurements") +
+  theme(
+    axis.text = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5, size = 6),
+    strip.text = element_text(size = 8)
+    )
+
+dev.copy(tiff, "figure1_facet.tiff", width = 1200, height = 2000, res = 300)
+figure1_facet
+dev.off()
+```
+![](figure1_facet.tiff)
+
+
 ##Adjusting for Patients
 
 This model has a random effect for the participant ID, which accounts for repeated measurements on the same person. This does not, however, account for measurements on more than one eye per person. Therefore the data was used that randomly selected one eye per participant. Later models will adjust for this.
@@ -1859,6 +2030,7 @@ Linear, mixed-effects modeling was used to account for repeated measurements on 
 model_2eye_fit <- lmer(v_area_density ~ (1 | ptid / eyeid), data = data_octa_global_intra_2eye)
 summary(model_2eye_fit)
 ```
+
 
 ### Table 3: Reliability Statistics, Both Eyes
 ```{r}
@@ -1940,7 +2112,7 @@ get_big_stats_table_2eyes <- function(df){
     get_cl95 <- function(x){
       
       # calculate the bootstrap distribution
-      boot_x <- bootMer(model_2eye, x, nsim = 100)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
+      boot_x <- bootMer(model_2eye, x, nsim = 1)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
       
       # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
       quantile(boot_x$t, c(0.025, 0.975))
