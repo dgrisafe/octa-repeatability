@@ -1986,8 +1986,9 @@ ba_data_summary <- ba_data %>%
     diff_u95cl = diff_mean + 1.96*sd(diff)
   )
 
-# create bland altman plot from data
-figure1_facet <- ba_data %>% 
+
+# create bland altman plot from data: vertical for paper
+figure1_facet_vertical <- ba_data %>% 
   ggplot(aes(x = mean, y = diff)) +
   geom_point(size = 0.1, alpha = 1) +
   geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
@@ -2001,9 +2002,30 @@ figure1_facet <- ba_data %>%
     plot.title = element_text(hjust = 0.5, size = 6),
     strip.text = element_text(size = 8)
     )
+# save vertical figure 1 for use in paper
+dev.copy(tiff, "figure1_facet_v_paper.tiff", width = 1200, height = 2000, res = 300)
+figure1_facet_vertical
+dev.off()
 
-dev.copy(tiff, "figure1_facet.tiff", width = 1200, height = 2000, res = 300)
-figure1_facet
+
+# create bland altman plot from data: horizontal for presentations
+figure1_facet_horizontal <- ba_data %>% 
+  ggplot(aes(x = mean, y = diff)) +
+  geom_point(size = 0.1, alpha = 1) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
+  geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
+  facet_grid(data_type ~ outcome) +
+  ylab("Difference in Measurements") +
+  xlab("Average Measurements") +
+  theme(
+    axis.text = element_text(size = 6),
+    plot.title = element_text(hjust = 0.5, size = 6),
+    strip.text = element_text(size = 8)
+    )
+# save horizontal figure 1 for use in slides
+dev.copy(tiff, "figure1_facet_h_slides.tiff", width = 2000, height = 1200, res = 300)
+figure1_facet_horizontal
 dev.off()
 ```
 ![](figure1_facet.tiff)
