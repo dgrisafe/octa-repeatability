@@ -75,11 +75,12 @@ trim_ci_pretty <- function(lcl, ucl){paste0("(", trim3(lcl), ", ", trim3(ucl), "
 
 ```{r}
 # common factor formats
-form_eye    <- function(x){factor(x, levels = c(1, 2), labels = c("Left",   "Right"))}
-form_ny     <- function(x){factor(x, levels = c(1, 2), labels = c("No",    "Yes"))}
-form_female <- function(x){factor(x, levels = c(1, 2), labels = c("Female", "Male"))}
+form_eye    <- function(x){factor(x, levels = c(1:2), labels = c("Left",   "Right"))}
+form_ny     <- function(x){factor(x, levels = c(1:2), labels = c("No",    "Yes"))}
+form_female <- function(x){factor(x, levels = c(1:2), labels = c("Female", "Male"))}
 form_glc     <- function(x){factor(x, levels = c(1:4), labels = c("None", "Mild", "Moderate", "Severe"))}
-form_glc_bin <- function(x){factor(x, levels = c(1, 2), labels = c("Normal", "Glaucoma"))}
+form_glc_bin <- function(x){factor(x, levels = c(1:2), labels = c("Normal", "Glaucoma"))}
+form_glc_bin_people <- function(x){factor(x, levels = c(1:3), labels = c("Normal, Bilateral", "Glaucoma, Bilateral", "Glaucoma, Unilateral"))}
 form_dr     <- function(x){factor(x, levels = c(1:5), labels = c("None", "Mild Non-Proliferative Diabetic Retinopathy", "Moderate Non-Proliferative Diabetic Retinopathy", "Severe Non-Proliferative Diabetic Retinopathy", "Proliferative Diabetic Retinopathy"))}
 form_surg   <- function(x){factor(x, levels = c(1:4), labels = c("None", "Laser", "Minimally Invasive Glaucoma Surgery", "Filter"))}
 form_ss <- function(x){as.integer(x)}
@@ -285,7 +286,7 @@ data_sociodem_long <- list(
     glc_dx_bin = case_when(
       glc_dx %in% c("None") ~ 1,
       glc_dx %in% c("Mild", "Moderate", "Severe") ~ 2
-      ) %>% factor(c(1:2), c("Normal", "Glaucoma")),
+      ) %>% form_glc_bin(),
     
     # create indicator variable for diabetic reinopathy status
     dr_dx_bin = case_when(
@@ -296,8 +297,13 @@ data_sociodem_long <- list(
         "Severe Non-Proliferative Diabetic Retinopathy",
         "Proliferative Diabetic Retinopathy"
         ) ~ 2
-    ) %>% form_ny()
-    )
+    ) %>% form_ny() 
+    
+    ) %>% 
+  
+  # create a variable that indicates whether people are bilateral normal/glaucoma or unilateral glaucoma
+  group_by(ptid) %>% mutate(glc_dx_bin_people = mean(as.double(glc_dx_bin), na.rm = T)) %>% ungroup() %>% 
+  mutate(glc_dx_bin_people = ifelse(!(glc_dx_bin_people %in% c(1, 2)), 3, glc_dx_bin_people) %>% form_glc_bin_people())
 ```
 
 
@@ -319,6 +325,7 @@ var_labels <- c(
   glc_sus_dx = "Glaucoma Suspect Diagnosis",
   glc_dx = "Glaucoma Diagnosis, Ordinal",
   glc_dx_bin = "Glaucoma Diagnosis, Binary",
+  glc_dx_bin_people = "Glaucoma Diagnosis Laterality, Ordinal",
   surg_proc_glaucoma = "Surgical Procedure for Glaucoma",
   surg_proc_catextract = "Surgical Procedure for Cataract Extraction",
   
@@ -541,6 +548,9 @@ get_inter <- function(df, window_days){
   
   df %>% 
     
+    # remove people with unilateral glaucoma, only include those with bilateral status
+    # dplyr::filter(glc_dx_bin_people %in% c("Normal, Bilateral", "Glaucoma, Bilateral")) %>%
+    
     # select the first measurement per day for every eye imaged
     group_by(ptid, eye_imaged, exam_date) %>% 
     top_n(n = -1, wt = time_stamp) %>% 
@@ -589,158 +599,118 @@ data_octa_global_inter_1eye180 <- data_octa_global_1eye %>% get_inter(window_day
 data_octa_global_inter_2eye180 <- data_octa_global_2eye %>% get_inter(window_days = 180)
 ```
 
-##Data Flow Chart
+##Data Flow Chart{.tabset}
 
 This tallies how many participants, how many eyes, and how many measurements are included in the two data sets.
 
+For repeatability statistics, normal and glaucoma groups may sum to greater than the total number of participants in the study because some participants have both eyes normal or both eyes with glaucoma, but some patients have unilateral glaucoma. 
+
 ```{r}
+# function to filter normal and glaucoma
+filter_normal   <- function(df){df %>% dplyr::filter(glc_dx_bin == "Normal")}
+filter_glaucoma <- function(df){df %>% dplyr::filter(glc_dx_bin == "Glaucoma")}
 
-get_flow_chart <- function(df_intra, df_inter){
-  
+# function to get number participants or eyes
+count_participants <- function(df){df %>% group_by(ptid) %>% summarise(n()) %>% nrow()}
+count_eyes         <- function(df){df %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()}
+
+# function that gets a row
+get_flow_row <- function(df_label, df){
   data.frame(
-    
-    dataset = c(
-      "Intra-Visit",
-      "Inter-Visit"
-      ),
-    
-    #number of participants
-    n_participants = c(
-      df_intra %>% group_by(ptid) %>% summarise(n()) %>% nrow(),
-      df_inter %>% group_by(ptid) %>% summarise(n()) %>% nrow()
-      ),
-    
-    #number of eyes
-    n_eyes = c(
-      df_intra %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow(),
-      df_inter %>% group_by(ptid, eye_imaged) %>% summarise(n()) %>% nrow()
-      ),
-    
-    # number of measurements
-    n_measurements = c(
-      df_intra %>% nrow(),
-      df_inter %>% nrow()
-      )
-    
-    )
-
+    dataset = df_label,
+    n_participants = count_participants(df),
+    n_eyes = count_eyes(df),
+    n_measurements = nrow(df)
+  )
 }
 
+# function that gets 3 rows: overall, normal, glaucoma
+get_flow_chart <- function(label, df){
+  bind_rows(
+    get_flow_row(label, df),
+    get_flow_row(paste0(label, ", Normal"), filter_normal(df)),
+    get_flow_row(paste0(label, ", Glaucoma"), filter_glaucoma(df))
+  )
+}
+```
+
+###Both Eyes
+```{r, warning=FALSE}
+# bind all rows together and make html table
 bind_rows(
-  get_flow_chart(df_inter =  data_octa_global_inter_1eye, df_intra = data_octa_global_intra_1eye),
-  get_flow_chart(df_inter =  data_octa_global_inter_2eye, df_intra = data_octa_global_intra_2eye)
+  get_flow_chart("Intra-Visit", data_octa_global_intra_2eye),
+  get_flow_chart("Inter-Visit", data_octa_global_inter_2eye),
+  get_flow_chart("Inter-Visit, 1 Year", data_octa_global_inter_2eye365),
+  get_flow_chart("Inter-Visit, 6 Months", data_octa_global_inter_2eye180)
+  
 ) %>% 
   kable() %>% 
     kable_styling(bootstrap_options = c("striped", "hover")) %>% 
-    pack_rows("Global Data - Single Eye, Random", 1, 2) %>% 
-    pack_rows("Global Data - Both Eyes", 3, 4) 
-
+    pack_rows("Annular Data - Intra-Visit - Both Eyes", 1, 3) %>% 
+    pack_rows("Annular Data - Inter-Visit - Both Eyes", 4, 6) %>% 
+    pack_rows("Annular Data - Inter-Visit - Both Eyes - Restrict 1 Year", 7, 9) %>%  
+    pack_rows("Annular Data - Inter-Visit - Both Eyes - Restrict 6 Months", 10, 12) 
 ```
 
-```{r}
-# function to count observations for normal and glaucoma by eye and observation
-get_count_obs <- function(df){
-  count_data <- df %>% group_by(glc_dx_bin) %>% mutate(patients = n_distinct(ptid)) %>% count(patients)
-
-  list(
-    measurements = list(
-      normal   = count_data$n[count_data$glc_dx_bin == "Normal"], 
-      glaucoma = count_data$n[count_data$glc_dx_bin == "Glaucoma"]),
-    patients = list(
-      normal   = count_data$patients[count_data$glc_dx_bin == "Normal"], 
-      glaucoma = count_data$patients[count_data$glc_dx_bin == "Glaucoma"])
-  )}
-
-# single eye
-count_1eye <- get_count_obs(data_octa_global_1eye)
-count_intra_1eye <- get_count_obs(data_octa_global_intra_1eye)
-count_inter_1eye <- get_count_obs(data_octa_global_inter_1eye)
-
-# both eyes
-count_2eye <- get_count_obs(data_octa_global_2eye)
-count_intra_2eye <- get_count_obs(data_octa_global_intra_2eye)
-count_inter_2eye <- get_count_obs(data_octa_global_inter_2eye)
+###One Eye, Random
+```{r, warning=FALSE}
+# bind all rows together and make html table
+bind_rows(
+  get_flow_chart("Intra-Visit", data_octa_global_intra_1eye),
+  get_flow_chart("Inter-Visit", data_octa_global_inter_1eye),
+  get_flow_chart("Inter-Visit, 1 Year", data_octa_global_inter_1eye365),
+  get_flow_chart("Inter-Visit, 6 Months", data_octa_global_inter_1eye180)
+  
+) %>% 
+  kable() %>% 
+    kable_styling(bootstrap_options = c("striped", "hover")) %>% 
+    pack_rows("Annular Data - Intra-Visit - One Eye, Random", 1, 3) %>% 
+    pack_rows("Annular Data - Inter-Visit - One Eye, Random", 4, 6) %>% 
+    pack_rows("Annular Data - Inter-Visit - One Eye, Random - Restrict 1 Year", 7, 9) %>%  
+    pack_rows("Annular Data - Inter-Visit - One Eye, Random - Restrict 6 Months", 10, 12) 
 ```
-
-###Single Eye, Random
-
-After randomly selecting for one eye per participant,
-
-**Overall** there were:
-
-- `r count_1eye$measurements$normal` measurements of `r count_1eye$patients$normal` patients without glaucoma
-
-- `r count_1eye$measurements$glaucoma` measurements of `r count_1eye$patients$glaucoma` patients with glaucoma
-
-Among **intravisit** data there were:
-
-- `r count_intra_1eye$measurements$normal` measurements of `r count_intra_1eye$patients$normal` patients without glaucoma
-
-- `r count_intra_1eye$measurements$glaucoma` measurements of `r count_intra_1eye$patients$glaucoma` patients with glaucoma
-
-Among **intervisit** data there were:
-
-- `r count_inter_1eye$measurements$normal` measurements of `r count_inter_1eye$patients$normal` patients without glaucoma
-
-- `r count_inter_1eye$measurements$glaucoma` measurements of `r count_inter_1eye$patients$glaucoma` patients with glaucoma
-
-
-###Both Eyes
-
-When including both eyes of participants,
-
-**Overall** there were:
-
-- `r count_2eye$measurements$normal` measurements of `r count_2eye$patients$normal` patients without glaucoma
-
-- `r count_2eye$measurements$glaucoma` measurements of `r count_2eye$patients$glaucoma` patients with glaucoma
-
-Among **intravisit** data there were:
-
-- `r count_intra_2eye$measurements$normal` measurements of `r count_intra_2eye$patients$normal` patients without glaucoma
-
-- `r count_intra_2eye$measurements$glaucoma` measurements of `r count_intra_2eye$patients$glaucoma` patients with glaucoma
-
-Among **intervisit** data there were:
-
-- `r count_inter_2eye$measurements$normal` measurements of `r count_inter_2eye$patients$normal` patients without glaucoma
-
-- `r count_inter_2eye$measurements$glaucoma` measurements of `r count_inter_2eye$patients$glaucoma` patients with glaucoma
-
 
 
 #Table 1: Summary Statistics
+
+All table 1 data is shown, but publish only the Table 1 for the Intra-Visit.
+
+For repeatability statistics, normal and glaucoma groups may sum to greater than the total number of participants in the study because some participants have both eyes normal or both eyes with glaucoma, but some patients have unilateral glaucoma. 
 
 ```{r}
 # function to get table 1 for individual people, no repeated measurements
 print_table1_people <- function(df){
  
   vars_systemic <- c("age", "female", "htn_dx", "dm_dx", "nro_dx")
-  vars_new <- c("glc_dx_bin", "dr_dx_bin", "surg_proc_catextract", "surg_proc_glaucoma", "signal_strength")
+  vars_new <- c("glc_dx_bin", "glc_dx_bin_people", "dr_dx_bin", "surg_proc_catextract", "surg_proc_glaucoma", "signal_strength")
   
   # vars in table 1
   Vars_table1 <- c(vars_systemic, vars_new)
 
   # dataframe for table 1
   df_table1 <- df %>% 
+    
     # format doubles so not categorical
     mutate(
       age = as.double(age),
       ptid = as.double(ptid),
       eyeid = as.double(eyeid),
       glc_dx_bin = as.double(glc_dx_bin),
+      glc_dx_bin_people = as.double(glc_dx_bin_people),
       dr_dx_bin = as.double(dr_dx_bin),
       signal_strength = as.double(signal_strength),
       surg_proc_catextract = as.double(surg_proc_catextract),
       surg_proc_glaucoma = as.double(surg_proc_glaucoma)
       ) %>%
+    
     # select(ptid, order_obs, age) %>% 
     pivot_wider(
       id_cols = c(ptid, vars_systemic),
       names_prefix = "obs_",
       names_from = c(eye_imaged, order_obs),
-      values_from = c(glc_dx_bin, dr_dx_bin, signal_strength, surg_proc_glaucoma, surg_proc_catextract)
+      values_from = c(glc_dx_bin, glc_dx_bin_people, dr_dx_bin, signal_strength, surg_proc_glaucoma, surg_proc_catextract)
     ) %>% 
+    
     mutate(
       
       signal_strength = rowMeans(select(., starts_with("signal_strength")), na.rm = TRUE) %>% as.double(),
@@ -751,6 +721,15 @@ print_table1_people <- function(df){
         glc_dx_bin_obs_Right_1 == 2 | glc_dx_bin_obs_Right_2 == 2 | glc_dx_bin_obs_Right_3 == 2 |
          glc_dx_bin_obs_Left_1 == 2 |  glc_dx_bin_obs_Left_2 == 2 |  glc_dx_bin_obs_Left_3 == 2 ~ 2
       ) %>% form_glc_bin(),
+      
+      glc_dx_bin_people = case_when(
+        glc_dx_bin_people_obs_Right_1 == 1 | glc_dx_bin_people_obs_Right_2 == 1 | glc_dx_bin_people_obs_Right_3 == 1 |
+         glc_dx_bin_people_obs_Left_1 == 1 |  glc_dx_bin_people_obs_Left_2 == 1 |  glc_dx_bin_people_obs_Left_3 == 1 ~ 1,
+        glc_dx_bin_people_obs_Right_1 == 2 | glc_dx_bin_people_obs_Right_2 == 2 | glc_dx_bin_people_obs_Right_3 == 2 |
+         glc_dx_bin_people_obs_Left_1 == 2 |  glc_dx_bin_people_obs_Left_2 == 2 |  glc_dx_bin_people_obs_Left_3 == 2 ~ 2,
+        glc_dx_bin_people_obs_Right_1 == 3 | glc_dx_bin_people_obs_Right_2 == 3 | glc_dx_bin_people_obs_Right_3 == 3 |
+         glc_dx_bin_people_obs_Left_1 == 3 |  glc_dx_bin_people_obs_Left_2 == 3 |  glc_dx_bin_people_obs_Left_3 == 3 ~ 3      
+        ) %>% form_glc_bin_people(),
       
       dr_dx_bin = case_when(
         dr_dx_bin_obs_Right_1 == 1 | dr_dx_bin_obs_Right_2 == 1 | dr_dx_bin_obs_Right_3 == 1 |
@@ -790,9 +769,11 @@ print_table1_people <- function(df){
       age = as.double(age),
       signal_strength = as.double(signal_strength)
     )
+  
+
 
     ## export table 1 to html
-    CreateTableOne(data = df_table1, vars = Vars_table1, strata = "glc_dx_bin") %>%
+    CreateTableOne(data = df_table1, vars = Vars_table1) %>%
       print(exact = "stage", quote = FALSE, noSpaces = F, printToggle = F, varLabels = T) %>%
       kableone(digits = 3) %>%
       kable_styling(
@@ -801,111 +782,92 @@ print_table1_people <- function(df){
       ) %>%
       pack_rows("Sociodemographic Variables", 2, 3) %>%
       pack_rows("Systemic Clinical Variables", 4, 6) %>%
-      pack_rows("Ophthalmic Clinical Variables", 7, 8) %>%
-      pack_rows("Ophthalmic Surgical Variables", 9, 14) %>%
-      pack_rows("OCT Angiography Signal Strength", 15, 15)
+      pack_rows("Ophthalmic Clinical Variables", 7, 12) %>%
+      pack_rows("Ophthalmic Surgical Variables", 13, 18) %>%
+      pack_rows("OCT Angiography Signal Strength", 19, 19)
 
 }
-# print_table1_people(data_octa_global_intra_1eye)
+
+# print_table1_people(data_octa_global_intra_2eye)
 ```
 
-
-```{r}
-# function to get table 1 for all, repeated measurements
-print_table1_measure <- function(df){
-  
-  # variables to be included
-  Vars_table1 <- c(
-    "age", "female", 
-    "htn_dx", "dm_dx", "nro_dx", 
-    "dr_dx", "glc_sus_dx", "glc_dx", "surg_proc_glaucoma", "surg_proc_catextract",
-    "eye_imaged", "image_area", "image_method", "image_size", "signal_strength",
-    "v_diameter", "v_area_density", "zeiss_v_area_density", "v_skeleton_density", "v_perimeter_index", "v_complexity_index",
-    "flow_impair_zone", "flux", "zeiss_flux" 
-  )
-  # variables not included
-  # "eyeid", "ptid", "name_last", "name_first", "time_stamp", "exam_date"
-  
-  # factor variables
-  catVars_table1 <- c("female", "eye_imaged", "image_area", "image_method", "image_size")
-  
-  # exclude the following from table1: -SID, -Target, -Judge, -Date, -Meds, -Sx, -GLC
-  df_table1 <- df %>% select(Vars_table1, "glc_dx_bin") %>% mutate(
-    age = as.double(age),
-    v_diameter = as.double(v_diameter),
-    v_area_density = as.double(v_area_density),
-    zeiss_v_area_density = as.double(zeiss_v_area_density),
-    v_skeleton_density = as.double(v_skeleton_density),
-    v_perimeter_index = as.double(v_perimeter_index),
-    v_complexity_index = as.double(v_complexity_index),
-    flow_impair_zone = as.double(flow_impair_zone),
-    flux = as.double(flux),
-    zeiss_flux = as.double(zeiss_flux)
-  )
-  
-    ## export table 1 to html
-    CreateTableOne(data = df_table1, vars = Vars_table1, factorVars = catVars_table1, strata = "glc_dx_bin") %>% 
-      print(exact = "stage", quote = FALSE, noSpaces = F, printToggle = F, varLabels = T) %>%
-      kableone(digits = 3) %>%
-      kable_styling(
-        #bootstrap table classes
-        bootstrap_options = c("striped", "hover")
-      ) %>% 
-      pack_rows("Sociodemographic Variables", 2, 3) %>%
-      pack_rows("Systemic Clinical Variables", 4, 6) %>% 
-      pack_rows("Diabetic Retinopathy Diagnosis", 7, 12) %>% 
-      pack_rows("Glaucoma Suspect Diagnosis", 13, 17) %>%
-      pack_rows("Glaucoma Diagnosis, Ordinal", 18, 22) %>%
-      pack_rows("Surgical Procedure for Glaucoma", 23, 27) %>%
-      pack_rows("Surgical Procedure for Cataract Extraction", 28, 28) %>% 
-      pack_rows("Image Specifications", 29, 32) %>% 
-      pack_rows("OCT Angiography Signal Strength", 33, 37) %>% 
-      pack_rows("OCT Angiography Variables", 38, 46)
-    
-}
-# print_table1(data_octa_global_intra_1eye)
-```
-
-
-##Intra-Visit OCTA Summary Statistics{.tabset}
+##Intra-Visit, Both Eyes OCTA Summary Statistics{.tabset}
 
 Variables in intra-visit dataset
 
-###Participants
+###Intra-Visit
 ```{r, message = FALSE}
-print_table1_people(data_octa_global_intra_1eye)
+data_octa_global_intra_2eye %>% print_table1_people()
 ```
 
-###Measurements, Single Eye
-```{r, warning = FALSE}
-print_table1_measure(data_octa_global_intra_1eye)
+###Intra-Visit, Normal
+```{r, message = FALSE}
+data_octa_global_intra_2eye %>% filter_normal() %>% print_table1_people()
 ```
 
-###Measurements, Both Eyes
-```{r, warning = FALSE}
-print_table1_measure(data_octa_global_intra_2eye)
+###Intra-Visit, Glaucoma
+```{r, message = FALSE}
+data_octa_global_intra_2eye %>% filter_glaucoma() %>% print_table1_people()
 ```
 
-
-##Inter-Visit OCTA Summary Statistics{.tabset}
+##Inter-Visit, Both Eyes OCTA Summary Statistics{.tabset}
 
 Variables in inter-visit dataset
 
-###Participants
+###All{.tabset}
+
+####Inter-Visit
 ```{r, message = FALSE}
-print_table1_people(data_octa_global_inter_1eye)
+data_octa_global_inter_2eye %>% print_table1_people()
 ```
 
-###Measurements, Single Eye
-```{r}
-print_table1_measure(data_octa_global_inter_1eye)
+####Inter-Visit, Normal
+```{r, message = FALSE}
+data_octa_global_inter_2eye %>% filter_normal() %>% print_table1_people()
 ```
 
-###Measurements, Both Eyes
-```{r}
-print_table1_measure(data_octa_global_inter_2eye)
+####Inter-Visit, Glaucoma
+```{r, message = FALSE}
+data_octa_global_inter_2eye %>% filter_glaucoma() %>% print_table1_people()
 ```
 
+
+###1 Year{.tabset}
+These are the participants we will be using for **inter-visit glaucoma**
+
+####Inter-Visit
+```{r, message = FALSE}
+data_octa_global_inter_2eye365 %>% print_table1_people()
+```
+
+####Inter-Visit, Normal
+```{r, message = FALSE}
+data_octa_global_inter_2eye365 %>% filter_normal() %>% print_table1_people()
+```
+
+####Inter-Visit, Glaucoma
+```{r, message = FALSE}
+data_octa_global_inter_2eye365 %>% filter_glaucoma() %>% print_table1_people()
+```
+
+
+###6 Months{.tabset}
+These are the participants we will be using for **inter-visit normal**
+
+####Inter-Visit
+```{r, message = FALSE}
+data_octa_global_inter_2eye180 %>% print_table1_people()
+```
+
+####Inter-Visit, Normal
+```{r, message = FALSE}
+# data_octa_global_inter_2eye180 %>% filter_normal() %>% print_table1_people()
+```
+
+####Inter-Visit, Glaucoma
+```{r, message = FALSE}
+data_octa_global_inter_2eye180 %>% filter_glaucoma() %>% print_table1_people()
+```
 
 
 #Exploratory Data Analysis
@@ -1377,7 +1339,7 @@ data_octa_global_inter_1eye %>%
 
 
 
-#Reliability
+#Reliability, One Eye
 
 Reliability of OCTA Variables
 
@@ -1796,26 +1758,6 @@ Originally, we submitted the abstract to ARVO after calculating reliability stat
 
 ##Table 1: Participants
 
-After randomly selecting for one eye per participant,
-
-**Overall** there were:
-
-- `r count_1eye$measurements$normal` measurements of `r count_1eye$patients$normal` patients without glaucoma
-
-- `r count_1eye$measurements$glaucoma` measurements of `r count_1eye$patients$glaucoma` patients with glaucoma
-
-Among **intravisit** data there were:
-
-- `r count_intra_1eye$measurements$normal` measurements of `r count_intra_1eye$patients$normal` patients without glaucoma
-
-- `r count_intra_1eye$measurements$glaucoma` measurements of `r count_intra_1eye$patients$glaucoma` patients with glaucoma
-
-Among **intervisit** data there were:
-
-- `r count_inter_1eye$measurements$normal` measurements of `r count_inter_1eye$patients$normal` patients without glaucoma
-
-- `r count_inter_1eye$measurements$glaucoma` measurements of `r count_inter_1eye$patients$glaucoma` patients with glaucoma
-
 ```{r}
 print_table1_people(data_octa_global_intra_1eye)
 ```
@@ -2028,7 +1970,7 @@ dev.copy(tiff, "figure1_facet_h_slides.tiff", width = 2000, height = 1200, res =
 figure1_facet_horizontal
 dev.off()
 ```
-![](figure1_facet.tiff)
+![](figure1_facet_h_slides.tiff)
 
 
 ##Adjusting for Patients
@@ -2148,6 +2090,8 @@ get_big_stats_table_2eyes <- function(df){
           # variable name
           var_name = measurement,
           
+          n_participant = df %>% group_by(ptid) %>% n_groups(),
+          
           # average measurement
           mu = mean_measure,
         
@@ -2211,7 +2155,7 @@ get_big_stats_table_2eyes <- function(df){
   }
   
   # names of variables to include in tables
-  vars_reliable_table <- c("mu", outer(c("icc", "sw", "crw", "cvw"), c("", "_lower_cl", "_upper_cl"), FUN = "paste0")) 
+  vars_reliable_table <- c("n_participant", "mu", outer(c("icc", "sw", "crw", "cvw"), c("", "_lower_cl", "_upper_cl"), FUN = "paste0")) 
   vars_reliable_table_pretty <- paste0("pretty_", unique(str_remove(vars_reliable_table, pattern = regex("_lower|_upper"))))
   
   # get raw data for table
@@ -2221,6 +2165,7 @@ get_big_stats_table_2eyes <- function(df){
   ) %>% 
     # create pretty, formatted variables for data
     mutate(      
+      pretty_n_participant = as.integer(n_participant),
       pretty_mu = trim3(mu),
       pretty_icc = trim3(icc),
       pretty_icc_cl = trim_ci_pretty(icc_lower_cl, icc_upper_cl),
@@ -2235,7 +2180,7 @@ get_big_stats_table_2eyes <- function(df){
     pivot_wider(id_cols = var_name, names_from = disease, values_from = c(vars_reliable_table, vars_reliable_table_pretty)) %>% 
     # order variables into proper format
     select(var_name, ends_with("normal"), ends_with("glaucoma")) %>%     # first order by disease status: normal, glaucoma
-    select(var_name, contains("mu_"), contains("icc_"), contains("sw_"), contains("crw_"), contains("cvw_")) # then order by reliability: mu, icc, sw, etc.
+    select(var_name, contains("n_participant_"), contains("mu_"), contains("icc_"), contains("sw_"), contains("crw_"), contains("cvw_")) # then order by reliability: mu, icc, sw, etc.
   
   # select pretty data only for printing
   table_data_pretty <- table_data %>% 
@@ -2250,10 +2195,11 @@ get_big_stats_table_2eyes <- function(df){
           bootstrap_options = c( "hover")
         ) %>% 
         # group column headers
-        add_header_above(c(" " = 1, "Normal" = 1, "Glaucoma" = 1, rep(c("Normal" = 2, "Glaucoma" = 2), times = 4))) %>% 
-        add_header_above(c("OCTA Variable" = 1, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
+        add_header_above(c(" " = 1, rep(c("Normal" = 1, "Glaucoma" = 1), times = 2), rep(c("Normal" = 2, "Glaucoma" = 2), times = 4))) %>%
+        add_header_above(c("OCTA Variable" = 1, "N Participants" = 2, "Mean" = 2, "ICC" = 4, "Sw" = 4, "CRw" = 4, "CVw" = 4))
   
 }
+# get_big_stats_table_2eyes(df = data_octa_global_intra_2eye)
 ```
 
 ### Table 3a: Both Eyes, Intra-Visit Repeatability
