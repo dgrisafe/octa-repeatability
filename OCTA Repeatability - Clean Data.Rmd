@@ -238,13 +238,13 @@ data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "
   group_by(ptid) %>% top_n(x = ., n = 1, wt = -age) %>% ungroup()
 
 # OCTA data from group's algorithm
-data_octa_filename <- paste0(dir_data, "/RR_all_quantification_01_17_2020.xlsx")
+data_octa_filename <- paste0(dir_data, "/RR_all_quantification_02_20_2020.xlsx")
 data_octa_global <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()    # THIS IS NOT AN ERROR!!! I INTENTIONALLY "TROJAN HORSED" THE ANNULUS INTO THE GLOBAL TO QUICKLY GET THE ANALYSIS FOR ANNULUS
 data_octa_annulus <- read_xlsx(data_octa_filename, sheet = "Annulus") %>% form_vars() %>% exclude_patients()
-data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
-data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars() %>% exclude_patients()
-data_octa_sector <- read_xlsx(data_octa_filename, sheet = "Sector") %>% form_vars() %>% exclude_patients()
-data_octa_clockhour <- read_xlsx(data_octa_filename, sheet = "Clockhours") %>% form_vars() %>% exclude_patients()
+# data_octa_hemifield <- read_xlsx(data_octa_filename, sheet = "Hemifield") %>% form_vars() %>% exclude_patients()
+# data_octa_quadrant <- read_xlsx(data_octa_filename, sheet = "Quadrants") %>% form_vars() %>% exclude_patients()
+# data_octa_sector <- read_xlsx(data_octa_filename, sheet = "Sector") %>% form_vars() %>% exclude_patients()
+# data_octa_clockhour <- read_xlsx(data_octa_filename, sheet = "Clockhours") %>% form_vars() %>% exclude_patients()
 
 # OCTA data from commercial algorithm
 data_octa_commercial <- read_xlsx(data_octa_filename, sheet = "Commercial measurement") %>% form_vars() %>% exclude_patients()
@@ -669,6 +669,15 @@ bind_rows(
     pack_rows("Annular Data - Inter-Visit - One Eye, Random - Restrict 1 Year", 7, 9) %>%  
     pack_rows("Annular Data - Inter-Visit - One Eye, Random - Restrict 6 Months", 10, 12) 
 ```
+
+#Missing
+```{r, include = FALSE}
+data_octa_global_intra_2eye %>% 
+  anti_join(data_octa_global_inter_2eye, by = "ptid") %>% 
+  kable() %>% 
+  kable_styling()
+```
+
 
 
 #Table 1: Summary Statistics
