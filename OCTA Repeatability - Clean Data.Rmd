@@ -32,6 +32,7 @@ library(lme4)
 library(lmerTest)
 library(citr)
 library(details)          # allows hiding r objects in html "details packages"
+library(styledom)
 
 # directories
 dir_data <- "/Volumes/GoogleDrive/My Drive/2017-2020 USC Roski Eye Institute/OCTA Repeatability - Grace Richter/Data/Jae"
@@ -229,7 +230,7 @@ form_vars <- function(df){
 # create a function that removes the middle initial and titles from the names
 
 # sociodemographic data
-data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_all.xlsx"), sheet = "PoHx") %>% 
+data_sociodem <- read_xlsx(paste0(dir_data, "/R&R_PoHX_IOP_MD_all_20200310.xlsx"), sheet = "PoHx") %>% 
   form_sociodem_vars() %>% 
   exclude_patients() %>% 
   # patient with duplicate demographic information (ptid == 6862281)
@@ -880,6 +881,29 @@ data_octa_global_inter_2eye180 %>% filter_glaucoma() %>% print_table1_people()
 
 
 #Exploratory Data Analysis
+
+## Histograms{.tabset}
+
+### Vessel Area Density
+```{r}
+plot_hist_continuous(data_octa_global_1eye, var = v_area_density, 0.005)
+```
+
+### Vessel Area Density, Zeiss
+```{r}
+plot_hist_continuous(data_octa_global_1eye, var = zeiss_v_area_density, 0.005) 
+```
+
+### Flux
+```{r}
+plot_hist_continuous(data_octa_global_1eye, var = flux, 0.005)
+```
+
+### Flux, Zeiss
+```{r}
+plot_hist_continuous(data_octa_global_1eye, var = zeiss_flux, 0.005)
+```
+
 
 ##Scatter Plots{.tabset}
 
@@ -1954,9 +1978,9 @@ figure1_facet_vertical <- ba_data %>%
     strip.text = element_text(size = 8)
     )
 # save vertical figure 1 for use in paper
-dev.copy(tiff, "figure1_facet_v_paper.tiff", width = 1200, height = 2000, res = 300)
+dev.copy(tiff, "figure1_facet_v_paper.tiff", width = 1200, height = 2000, res = 300) %>% invisible()
 figure1_facet_vertical
-dev.off()
+dev.off() %>% invisible()
 
 
 # create bland altman plot from data: horizontal for presentations
@@ -1975,9 +1999,9 @@ figure1_facet_horizontal <- ba_data %>%
     strip.text = element_text(size = 8)
     )
 # save horizontal figure 1 for use in slides
-dev.copy(tiff, "figure1_facet_h_slides.tiff", width = 2000, height = 1200, res = 300)
+dev.copy(tiff, "figure1_facet_h_slides.tiff", width = 2000, height = 1200, res = 300) %>% invisible()
 figure1_facet_horizontal
-dev.off()
+dev.off() %>% invisible()
 ```
 ![](figure1_facet_h_slides.tiff)
 
@@ -2085,7 +2109,7 @@ get_big_stats_table_2eyes <- function(df){
     get_cl95 <- function(x){
       
       # calculate the bootstrap distribution
-      boot_x <- bootMer(model_2eye, x, nsim = 100)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
+      boot_x <- bootMer(model_2eye, x, nsim = 1000)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
       
       # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
       quantile(boot_x$t, c(0.025, 0.975))
@@ -2323,6 +2347,173 @@ get_ss_table(df_disease = data_octa_global_intra_2eye %>% dplyr::filter(glc_dx_b
 ###Glaucoma
 ```{r}
 get_ss_table(df_disease = data_octa_global_intra_2eye %>% dplyr::filter(glc_dx_bin == "Glaucoma"))
+```
+
+
+
+# Visual Field, Both Eyes
+
+Are anatomical differences in retinal blood flow predict what patients are experiencing? We use OCTA variables as the independent variable to see if they are associated with total mean deviation, a measure of visual field loss.
+
+Their result is a simple table of regression estimates for mean deviation of visual field, shown in the output below. 
+
+```{r}
+data_md_vfl_raw <- read_xlsx(
+  paste0(dir_data, "/R&R_PoHX_IOP_MD_all_20200310.xlsx"), sheet = "VF_MD",
+  col_types = c(rep("text", 3), "numeric", "text", rep("date", 2), rep("numeric", 6))
+  ) 
+
+data_md_vfl <- data_md_vfl_raw %>% 
+  janitor::clean_names(case = "snake") %>% 
+  dplyr::rename(
+    ptid = sid, date_vf = vf_date,
+    falsepos_od = pos_od_percent, falseneg_od = neg_od_percent,
+    falsepos_os = pos_os_percent, falseneg_os = neg_os_percent
+    ) %>% 
+  dplyr::select(ptid, date_vf, ends_with("_od"), ends_with("_os"))
+
+data_md_vfl_long <- data_md_vfl %>% 
+  pivot_longer(cols = c(ends_with("_od"), ends_with("_os")), values_to = "value", names_to = "measure_eye") %>% 
+  separate(col = "measure_eye", into = c("measure", "eye"), sep = "_") %>% 
+  dplyr::mutate(eye_imaged = case_when(eye == "os" ~ 1, eye == "od" ~ 2) %>% form_eye()) %>% 
+  dplyr::arrange(ptid, eye, date_vf) %>% 
+  dplyr::filter(!is.na(value)) %>% 
+  dplyr::select(-eye) 
+
+data_md_vfl_wide <- data_md_vfl_long %>% 
+  pivot_wider(id_cols = c("ptid", "eye_imaged", "date_vf"), names_from = "measure", values_from = "value")
+```
+
+`r data_octa_global_intra_2eye %>% group_by(ptid) %>% n_groups()` participants had intra-visit measurements.
+
+`r data_md_vfl_raw %>% group_by(SID) %>% n_groups()` participants had visual field loss measurements 
+
+## Exclusion Criteria
+
+The visual field (VF) measurement at the first day was used, and all repeated measurements were excluded.
+
+VF measurements were excluded if they had:
+
+- Greater than 15% false positive error rates
+
+- Greater than 15% false negative error rates
+
+```{r}
+data_md_vfl_exclude <- data_md_vfl_wide %>% dplyr::filter(falsepos <= 15 | falseneg <= 15)
+
+# test <-  data_octa_global_intra_2eye_vfl %>% dplyr::filter(is.na(md))
+```
+
+`r data_md_vfl_exclude %>% group_by(ptid) %>% n_groups()` participants had reliable visual field loss measurements 
+
+## First Measurement
+
+Participants may have had multiple VF measurements on their eyes. Only take the first measurement at their first visit.
+
+```{r}
+data_md_vfl_exclude_first <- data_md_vfl_exclude %>%
+  group_by(ptid, eye_imaged) %>%
+  top_n(1, wt = date_vf) %>%
+  ungroup() 
+```
+
+
+Join VF data to intra-visit data
+
+```{r, warning = FALSE}
+data_octa_global_intra_2eye_vfl <- data_octa_global_intra_2eye %>% 
+  left_join(data_md_vfl_exclude_first, by = c("ptid", "eye_imaged"))
+
+# data_octa_global_intra_2eye_vfl %>% glimpse
+```
+
+`r data_octa_global_intra_2eye_vfl %>% dplyr::filter(!is.na(md)) %>% group_by(ptid) %>% n_groups()` participants had reliable visual field loss measurements in the intra-visit data.
+
+## Linear Mixed Effects Model
+
+This is an example of the LME Model used to calculate coefficients in the table below
+
+```{r}
+model_md_fit <- lmer(v_area_density ~ md + signal_strength + (1|ptid / eyeid), data = data_octa_global_intra_2eye_vfl)
+summary(model_md_fit)
+
+# test <- data_octa_global_intra_2eye_vfl %>% select(ptid, eyeid, v_area_density, md, signal_strength) 
+```
+
+## Total Mean Deviation Associated with OCTA Measurements{.tabset}
+
+OCTA outcomes were associated with total mean deviation, adjusting for signal strength in the mixed effects models.
+
+This occurs in all patients, and also separately when stratifying by glaucoma diagnosis.
+
+```{r}
+# OCTA outcome variables of interest
+# octa_vars_select_vars    # defined above about line 1700
+
+get_md_table <- function(df_disease){
+
+  get_md_row <- function(measurement, df){
+    
+    # formula for signal strength
+    formula_md <- as.formula(paste0(measurement, "~ md + signal_strength + (1|ptid / eyeid)"))
+    
+    # get model
+    model_md_fit <- lmer(formula_md, data = df)
+    
+    # get beta statistics table
+    beta_out <- summary(model_md_fit)$coefficients 
+    
+    # get names of variables
+    vars <- beta_out %>% row.names()
+    
+    # get index that corresponds to signal_strength
+    index_md <- 2
+    
+    # create output as a single horizontal row
+    beta_out_md <- beta_out[index_md,] %>% t() %>% as.data.frame()
+    
+    # add parameter outcome and estimate (ss) before stats
+    bind_cols(octa_outcome = measurement, parameter = vars[index_md], beta_out_md)
+    
+  }
+  
+  # get data table for signal strength beta estimates
+  md_table <- map_dfr(
+    .x = octa_vars_select_vars,
+    .f = get_md_row,
+    df = df_disease
+    ) %>% 
+    # create pretty variables
+    mutate(
+      l_95_cl = Estimate - 1.96 * `Std. Error`,
+      u_95_cl = Estimate + 1.96 * `Std. Error`,
+      pretty_beta = trim3(Estimate),
+      pretty_se = trim3(`Std. Error`),
+      pretty_cl = trim_ci_pretty(l_95_cl, u_95_cl),
+      pretty_pval = trim3(`Pr(>|t|)`)
+    )
+  
+  md_table %>% 
+    select(octa_outcome, parameter, pretty_beta, pretty_se, pretty_cl, pretty_pval) %>% 
+    kable() %>% 
+    kable_styling(bootstrap_options = c( "hover"))
+  
+}
+```
+
+###Overall
+```{r}
+get_md_table(df_disease = data_octa_global_intra_2eye_vfl)
+```
+
+###Normal
+```{r}
+get_md_table(df_disease = data_octa_global_intra_2eye_vfl %>% dplyr::filter(glc_dx_bin == "Normal"))
+```
+
+###Glaucoma
+```{r}
+get_md_table(df_disease = data_octa_global_intra_2eye_vfl %>% dplyr::filter(glc_dx_bin == "Glaucoma"))
 ```
 
 
