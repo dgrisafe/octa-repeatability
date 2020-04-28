@@ -1162,7 +1162,7 @@ get_blandaltman_data <- function(df, octa_var){
   df %>%
 
     # select only the measurement ID and the OCTA variable of interest
-    select(ptid, eye_imaged, order_obs, eyeid, !!octa_var) %>%
+    select(ptid, eye_imaged, order_obs, eyeid, !!octa_var, glc_dx_bin) %>%
         
     # only select the first 2 measurements
     filter(order_obs <= 2) %>% 
@@ -1901,9 +1901,10 @@ get_big_stats_table(df_normal = data_octa_global_inter_1eye365, df_glaucoma = da
 
 Mixed Effects Regression Models allow random effects for certain variables. This allows us to include multiple measurements from the same person and eye while still satisfying independence.
 
-##Figure 1
+## Figure 1{.tabset}
 
 Here are the Bland Altman Plots for OCTA outcomes in both eyes. The variables of interest are VAD and FLUX for the current algorithm and the Zeiss algorithm. This is an interesting plot to show before explaing the mixed effects model.
+
 ```{r, warning = FALSE}
 # function that creates bland altman plot data for each OCTA variable of interest
 get_ba_data <- function(df, outcome){
@@ -1918,7 +1919,7 @@ get_ba_data <- function(df, outcome){
   get_blandaltman_data(df, outcome_dplyr) %>% 
     # create an indicator variable of the octa variable
     mutate(outcome = octa_name) %>% 
-    select(ptid, eye_imaged, order_obs, eyeid, outcome, diff, mean)
+    select(ptid, eye_imaged, order_obs, eyeid, outcome, diff, mean, glc_dx_bin)
 
 }
 
@@ -1960,44 +1961,104 @@ ba_data_summary <- ba_data %>%
     diff_l95cl = diff_mean - 1.96*sd(diff),
     diff_u95cl = diff_mean + 1.96*sd(diff)
   )
+```
 
+## Vertical{.tabset}
 
+Vertical image for paper manuscript
+
+```{r}
+# common plot specifications for vertical BA plots
+p_fig1_facet_vertical <- function(df){
+  
+  df %>% 
+    ggplot(aes(x = mean, y = diff)) +
+    geom_point(size = 0.1, alpha = 1) +
+    geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
+    geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
+    geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
+    facet_grid(outcome ~ data_type) +
+    scale_y_continuous(limits = c(-0.14, 0.14), breaks = round(seq(from = -0.1, to = 0.1, by = 0.05), 2)) +
+    scale_x_continuous(limits = c(0, 0.5)) +
+    ylab("Difference in Measurements") +
+    xlab("Average Measurements") +
+    theme(
+      axis.text = element_text(size = 6),
+      plot.title = element_text(hjust = 0.5, size = 6),
+      strip.text = element_text(size = 8)
+      )
+  
+}
+```
+
+```{r}
 # create bland altman plot from data: vertical for paper
-figure1_facet_vertical <- ba_data %>% 
-  ggplot(aes(x = mean, y = diff)) +
-  geom_point(size = 0.1, alpha = 1) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
-  facet_grid(outcome ~ data_type) +
-  ylab("Difference in Measurements") +
-  xlab("Average Measurements") +
-  theme(
-    axis.text = element_text(size = 6),
-    plot.title = element_text(hjust = 0.5, size = 6),
-    strip.text = element_text(size = 8)
-    )
+figure1_facet_vertical <- ba_data %>% p_fig1_facet_vertical()
+
 # save vertical figure 1 for use in paper
 dev.copy(tiff, "figure1_facet_v_paper.tiff", width = 1200, height = 2000, res = 300) %>% invisible()
 figure1_facet_vertical
 dev.off() %>% invisible()
+```
+![](figure1_facet_v_paper.tiff)
+
+### Normal
+
+```{r}
+figure1_facet_vertical_normal <- ba_data %>% dplyr::filter(glc_dx_bin == "Normal") %>% p_fig1_facet_vertical() + ggtitle("Normal Eyes") + theme(plot.title = element_text(size = 12))
+
+# save vertical figure 1 for use in paper
+dev.copy(tiff, "figure1_facet_v_paper_normal.tiff", width = 1200, height = 2000, res = 300) %>% invisible()
+figure1_facet_vertical_normal
+dev.off() %>% invisible()
+```
+![](figure1_facet_v_paper_normal.tiff)
+
+### Glaucoma
+
+```{r}
+figure1_facet_vertical_glaucoma <- ba_data %>% dplyr::filter(glc_dx_bin == "Glaucoma") %>% p_fig1_facet_vertical() + ggtitle("Glaucoma Eyes")+ theme(plot.title = element_text(size = 12))
+
+# save vertical figure 1 for use in paper
+dev.copy(tiff, "figure1_facet_v_paper_glaucoma.tiff", width = 1200, height = 2000, res = 300) %>% invisible()
+figure1_facet_vertical_glaucoma
+dev.off() %>% invisible()
+```
+![](figure1_facet_v_paper_glaucoma.tiff)
 
 
+## Horizontal{.tabset}
+
+Horizontal image for poster presentations
+
+```{r}
+# common plot specifications for vertical BA plots
+p_fig1_facet_horizontal <- function(df){
+  
+  df %>% 
+    ggplot(aes(x = mean, y = diff)) +
+      geom_point(size = 0.1, alpha = 1) +
+      geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
+      geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
+      geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
+      facet_grid(data_type ~ outcome) +
+      scale_y_continuous(limits = c(-0.14, 0.14), breaks = round(seq(from = -0.1, to = 0.1, by = 0.05), 2)) +
+      scale_x_continuous(limits = c(0, 0.5)) +
+      ylab("Difference in Measurements") +
+      xlab("Average Measurements") +
+      theme(
+        axis.text = element_text(size = 6),
+        plot.title = element_text(hjust = 0.5, size = 6),
+        strip.text = element_text(size = 8)
+        )
+  
+}
+```
+
+```{r}
 # create bland altman plot from data: horizontal for presentations
-figure1_facet_horizontal <- ba_data %>% 
-  ggplot(aes(x = mean, y = diff)) +
-  geom_point(size = 0.1, alpha = 1) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_mean), colour = "blue", size = 0.5, linetype = 2) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_l95cl), colour = "red", size = 0.5, linetype = 2) +
-  geom_hline(data = ba_data_summary, aes(yintercept = diff_u95cl), colour = "red", size = 0.5, linetype = 2) +
-  facet_grid(data_type ~ outcome) +
-  ylab("Difference in Measurements") +
-  xlab("Average Measurements") +
-  theme(
-    axis.text = element_text(size = 6),
-    plot.title = element_text(hjust = 0.5, size = 6),
-    strip.text = element_text(size = 8)
-    )
+figure1_facet_horizontal <- ba_data %>% p_fig1_facet_horizontal()
+
 # save horizontal figure 1 for use in slides
 dev.copy(tiff, "figure1_facet_h_slides.tiff", width = 2000, height = 1200, res = 300) %>% invisible()
 figure1_facet_horizontal
@@ -2005,8 +2066,32 @@ dev.off() %>% invisible()
 ```
 ![](figure1_facet_h_slides.tiff)
 
+### Normal
 
-##Adjusting for Patients
+```{r}
+figure1_facet_horizontal_normal <- ba_data %>% dplyr::filter(glc_dx_bin == "Normal") %>% p_fig1_facet_horizontal() + ggtitle("Normal Eyes") + theme(plot.title = element_text(size = 12))
+
+# save horizontal figure 1 for use in slides
+dev.copy(tiff, "figure1_facet_h_slides_normal.tiff", width = 2000, height = 1200, res = 300) %>% invisible()
+figure1_facet_horizontal_normal
+dev.off() %>% invisible()
+```
+![](figure1_facet_h_slides_normal.tiff)
+
+### Glaucoma
+
+```{r}
+figure1_facet_horizontal_glaucoma <- ba_data %>% dplyr::filter(glc_dx_bin == "Glaucoma") %>% p_fig1_facet_horizontal() + ggtitle("Glaucoma Eyes")+ theme(plot.title = element_text(size = 12))
+
+# save horizontal figure 1 for use in slides
+dev.copy(tiff, "figure1_facet_h_slides_glaucoma.tiff", width = 2000, height = 1200, res = 300) %>% invisible()
+figure1_facet_horizontal_glaucoma
+dev.off() %>% invisible()
+```
+![](figure1_facet_h_slides_glaucoma.tiff)
+
+
+## Adjusting for Patients
 
 This model has a random effect for the participant ID, which accounts for repeated measurements on the same person. This does not, however, account for measurements on more than one eye per person. Therefore the data was used that randomly selected one eye per participant. Later models will adjust for this.
 
