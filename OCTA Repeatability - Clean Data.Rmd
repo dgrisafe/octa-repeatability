@@ -2602,4 +2602,263 @@ get_md_table(df_disease = data_octa_global_intra_2eye_vfl %>% dplyr::filter(glc_
 ```
 
 
+# Sensitivity Analysis
+
+After review, some comments suggested various sensitivity analyses. 
+
+## Glaucoma Severity
+
+"Of 118 glaucoma eyes, we have 35 mild, 33 moderate, 50 severe. This seems fairly sufficient to address this no? If it's better for the analysis, we could also clump mild and moderate. Let me know what you think and if we could do a little analysis on this. I really think it will demonstrate to the readers that we are trying to make the most of the data we have to address the question of whether disease severity affects repeatability, which is an important one.. Even if our conclusion is that we are underpowered, to show some sort of preliminary analysis on this may be helpful."
+
+- G. Richter
+
+### Summary Stats
+
+Note, the total number of people measured is less than the sum of people in each glaucoma severity group. This is because some people have eyes with different glaucoma severity. For example, a person may have one eye with mild glaucoma and the other with no glaucoma; this person is counted twice.
+
+#### Total Measurements
+
+```{r}
+data_octa_global_intra_2eye %>% 
+  summarise(
+    n_people = n_distinct(ptid),
+    n_eyes = n_distinct(eyeid),
+    n_measurements = n()
+    ) %>% 
+  quick_kable()
+```
+
+#### Measurements by Glaucoma Severity
+
+```{r}
+data_octa_global_intra_2eye %>% 
+  group_by(forcats::fct_explicit_na(glc_dx)) %>% 
+  summarise(
+    n_people = n_distinct(ptid),
+    n_eyes = n_distinct(eyeid),
+    n_measurements = n()
+    ) %>% 
+  ungroup() %>% 
+  janitor::adorn_totals("row") %>% 
+  quick_kable()
+```
+
+### Function
+
+This function creates a similar table of measurement stats, but stratified by glaucoma severity level.
+
+```{r}
+# this function calculates the reliability statistics, but for both eyes, not just one
+get_2eyes_glc_sev <- function(glc_dx_lvl, df = data_octa_global_intra_2eye){
+
+  # OCTA outcome variables of interest
+  # octa_vars_select_vars    # defined above about line 1700
+
+  # dataframe filtered to one glaucoma level (normal, mild, moderate, severe)
+  df <- df %>% filter(glc_dx == glc_dx_lvl)
+  
+  # function that returns ICC w/95% confidence intervals 
+  get_adjusted_icc <- function(measurement, df){
+    
+    # format formula of measurement outcome and random effects of patient and eye
+    lmer_formula <- as.formula(paste(measurement, "~ (1 | ptid / eyeid)"))
+    
+    # linear mixed effects model
+    model_2eye <- lmer(lmer_formula, data = df)
+    
+    # calculate mean of variable
+    mean_measure <- mean(df[[measurement]])
+  
+    # function that calculates ICC
+    calc_icc <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+   
+      # get variance between: patient variance + eye variance
+      var_between <- var_corr$vcov[1] + var_corr$vcov[2]
+      
+      # get variance within: residual variance
+      var_within  <- var_corr$vcov[3]
+      
+      # calculate icc
+      (var_between) / (var_between + var_within)
+      
+    }
+    
+    # function that caclulates Sw, Within-Subject Standard Deviation
+    calc_sw <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+      
+      # Sw is the standard error of the residual term in the model
+      var_corr$sdcor[3]
+  
+    }
+    
+    # function that caclulates CRw, Within-Subject Coefficient of Repeatability
+    calc_crw <- function(x){
+      
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+      
+      # CRw is the standard error of the residual term in the model, times Sqrt(2), times 1.96
+      var_corr$sdcor[3] * sqrt(2) * 1.96
+  
+    }
+    
+    # function that caclulates CVw, Within-Subject Coefficient of Variation
+    calc_cvw <- function(x, mu_mean){
+        
+      # print variances from lme model
+      var_corr <- as.data.frame(VarCorr(x))
+        
+      # CVw is the standard error of the residual term in the model, divided by the mean
+      var_corr$sdcor[3] / mean_measure * 100
+    
+    }
+    
+    # calculate confidence intervals with bootstrap methods
+    #     assumes normal distribution of residuals
+    #     https://stats.stackexchange.com/questions/184767/how-do-i-calculate-the-confidence-interval-of-an-icc
+    get_cl95 <- function(x){
+      
+      # calculate the bootstrap distribution
+      boot_x <- bootMer(model_2eye, x, nsim = 1000)   # nsim = 1000 is standard, but 1hr. 100 probably sufficient. 10 fast enough to edit code
+      
+      # draw from the bootstrap distribution the usual 95% upper and lower confidence limits
+      quantile(boot_x$t, c(0.025, 0.975))
+      
+    }
+      
+      # return ICC w/95% confidence intervals
+      return(
+        tibble(
+          
+          # variable name
+          var_name = measurement,
+          
+          n_participant = df %>% group_by(ptid) %>% n_groups(),
+          
+          # average measurement
+          mu = mean_measure,
+        
+          # calculate icc
+          icc = calc_icc(model_2eye),
+          
+            # 95% lower CL
+            icc_lower_cl = get_cl95(calc_icc)[[1]],
+            
+            # 95% upper CL
+            icc_upper_cl = get_cl95(calc_icc)[[2]],
+          
+          # calculate sw
+          sw = calc_sw(model_2eye),
+          
+            # 95% lower CL
+            sw_lower_cl = get_cl95(calc_sw)[[1]],
+            
+            # 95% upper CL
+            sw_upper_cl = get_cl95(calc_sw)[[2]],      
+          
+          # calculate CRw
+          crw = calc_crw(model_2eye),
+          
+            # 95% lower CL
+            crw_lower_cl = get_cl95(calc_crw)[[1]],
+            
+            # 95% upper CL
+            crw_upper_cl = get_cl95(calc_crw)[[2]],   
+          
+          # calculate CVw
+          cvw = calc_cvw(model_2eye),
+          
+            # 95% lower CL
+            cvw_lower_cl = get_cl95(calc_cvw)[[1]],
+            
+            # 95% upper CL
+            cvw_upper_cl = get_cl95(calc_cvw)[[2]]
+          
+        ))
+      
+  }
+  
+  # function that applies the ICC function to multiple OCTA outcome variables
+  get_icc_disease_group <- function(var_names, df_disease){
+
+    # bind all the icc outcomes
+    bind_rows(
+      map(
+        .x = var_names,
+        .f = get_adjusted_icc,
+        df = df_disease
+        )) %>% 
+      
+      # add column of glaucoma disease status
+      mutate(disease = glc_dx_lvl)
+    
+  }
+  
+  # names of variables to include in tables
+  vars_reliable_table <- c("n_participant", "mu", outer(c("icc", "sw", "crw", "cvw"), c("", "_lower_cl", "_upper_cl"), FUN = "paste0"))
+  vars_reliable_table_pretty <- paste0("pretty_", unique(str_remove(vars_reliable_table, pattern = regex("_lower|_upper"))))
+  
+  # get raw data for table
+  table_data <- get_icc_disease_group(var_names = octa_vars_select_vars, df) %>%
+    # create pretty, formatted variables for data
+    mutate(
+      n_participant = as.integer(n_participant),
+      pretty_mu = trim3(mu),
+      pretty_icc = trim3(icc),
+      pretty_icc_cl = trim_ci_pretty(icc_lower_cl, icc_upper_cl),
+      pretty_sw = trim3(sw),
+      pretty_sw_cl = trim_ci_pretty(sw_lower_cl, sw_upper_cl),
+      pretty_crw = trim3(crw),
+      pretty_crw_cl = trim_ci_pretty(crw_lower_cl, crw_upper_cl),
+      pretty_cvw = trim3(cvw),
+      pretty_cvw_cl = trim_ci_pretty(cvw_lower_cl, cvw_upper_cl)
+      ) 
+  
+  table_data_pretty <- table_data %>% 
+    select(disease, contains("n_participant"), var_name, contains("pretty")) %>% 
+    mutate(var_name = var_labels[octa_vars_select_vars])
+
+  # make kable of table output
+  table_data_pretty %>%
+    kable(digits = 3, format = "html") %>%
+        kable_styling(
+          #bootstrap table classes
+          bootstrap_options = c( "hover")
+        ) %>% 
+    add_header_above(c("Glaucoma Severity" = 1, "OCTA Variable" = 1, "N Participants" = 1, "Mean" = 1, "ICC" = 2, "Sw" = 2, "CRw" = 2, "CVw" = 2))
+  
+}
+# get_2eyes_glc_sev("Moderate")
+```
+
+### Glaucoma: None
+
+```{r}
+get_2eyes_glc_sev("None")
+```
+
+### Glaucoma: Mild
+
+```{r}
+get_2eyes_glc_sev("Mild")
+```
+
+### Glaucoma: Moderate
+
+```{r}
+get_2eyes_glc_sev("Moderate")
+```
+
+### Glaucoma: Severe
+
+```{r}
+get_2eyes_glc_sev("Severe")
+```
+
 #References
