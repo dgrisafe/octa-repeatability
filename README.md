@@ -4,7 +4,7 @@ Measurement analysis of OCTA grading software for both repeatablity and reliabil
 
 This manuscript was recently published in the British Journal of Ophthalmology.
 
-## Files
+## Important Files
 
 ### OCTA Repeatability - Clean Data.Rmd
 
