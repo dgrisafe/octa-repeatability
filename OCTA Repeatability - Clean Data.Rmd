@@ -2630,8 +2630,42 @@ data_octa_global_intra_2eye %>%
 
 #### Measurements by Glaucoma Severity
 
+##### Intra-session
+
 ```{r}
 data_octa_global_intra_2eye %>% 
+  group_by(forcats::fct_explicit_na(glc_dx)) %>% 
+  summarise(
+    n_people = n_distinct(ptid),
+    n_eyes = n_distinct(eyeid),
+    n_measurements = n()
+    ) %>% 
+  ungroup() %>% 
+  janitor::adorn_totals("row") %>% 
+  quick_kable()
+```
+
+##### Inter-session{.tabset}
+
+###### All
+
+```{r}
+data_octa_global_inter_2eye365 %>% 
+  group_by(forcats::fct_explicit_na(glc_dx)) %>% 
+  summarise(
+    n_people = n_distinct(ptid),
+    n_eyes = n_distinct(eyeid),
+    n_measurements = n()
+    ) %>% 
+  ungroup() %>% 
+  janitor::adorn_totals("row") %>% 
+  quick_kable()
+```
+
+###### 180 Days
+
+```{r}
+data_octa_global_inter_2eye180 %>% 
   group_by(forcats::fct_explicit_na(glc_dx)) %>% 
   summarise(
     n_people = n_distinct(ptid),
