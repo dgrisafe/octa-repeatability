@@ -1,6 +1,6 @@
 # octa-repeatability
 
-Code for measurement analysis of OCTA analysis software for both repeatablity and reliability. 
+Measurement analysis of OCTA grading software for both repeatablity and reliability in the peripapillary region. 
 
 This manuscript was recently published in the British Journal of Ophthalmology.
 
