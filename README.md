@@ -4,7 +4,7 @@ Intrasession repeatability and intersession reproducibility of peripapillary OCT
 
 Measurement analysis of OCTA grading software for both repeatablity and reliability in the peripapillary region. 
 
-This manuscript was [recently published in the British Journal of Ophthalmology](https://pubmed.ncbi.nlm.nih.gov/32917629/).
+This manuscript was [published in the British Journal of Ophthalmology](https://pubmed.ncbi.nlm.nih.gov/32917629/).
 
 ## Important Files
 
